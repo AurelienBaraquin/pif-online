@@ -3,6 +3,10 @@
 # usage: run.sh client|game|battle|codec|interaction|network <game-directory> <windows-staging-directory>
 set -euo pipefail
 
+# Engine tests share the server port and the desktop: run one at a time.
+exec 9>/tmp/pif-online-engine-test.lock
+flock 9
+
 mode=$1
 game=$2
 stage=$3
