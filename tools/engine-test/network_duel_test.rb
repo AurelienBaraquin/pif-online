@@ -8,7 +8,15 @@ module NetworkDuelTest
   FRAMES_PER_STEP = 3
   ADDRESS = Multiplayer::Config.new("127.0.0.1", 7777)
   # Every clause that only changes the simulation: the random parties must stay legal.
-  RULES = Multiplayer::Duel::Rules.new(6, 0, true, 60, %w[sleep freeze ohko evasion perish skill_swap sonic_boom])
+  SIMULATION_CLAUSES = %w[sleep freeze ohko evasion perish skill_swap sonic_boom].freeze
+  RULES = Multiplayer::Duel::Rules.new(6, 0, true, 60, SIMULATION_CLAUSES)
+  DOUBLES = Multiplayer::Duel::Rules.new(6, 0, true, 60, [], "doubles")
+  DOUBLES_WITH_CLAUSES = Multiplayer::Duel::Rules.new(6, 0, true, 60, SIMULATION_CLAUSES, "doubles")
+  ROTATION = [DOUBLES, DOUBLES_WITH_CLAUSES, RULES].freeze
+  # Out of this many targeted moves, one aims anywhere, to reach the engine's
+  # fallbacks, and one lets the simulation pick.
+  WILD_TARGET_CHANCE = 5
+  AUTO_TARGET_CHANCE = 5
   INTERRUPT_ROUND = 3
   SWITCH_CHANCE = 15
 
@@ -31,12 +39,36 @@ module NetworkDuelTest
       @forfeit_round = forfeit_round
     end
 
-    def choose(battle, index)
+    def choose(battle, indices)
       return nil if @forfeit_round && battle.turnCount + 1 >= @forfeit_round
+      chosen = indices.to_h { |index| [index, action_for(battle, index)] }
+      indices.each { |index| battle.pbClearChoice(index) }
+      chosen
+    end
+
+    # Registers a switch as the menus do, so the partner cannot pick the same Pokémon.
+    def action_for(battle, index)
       party_slots = (0...battle.pbParty(index).length).select { |slot| battle.pbCanSwitch?(index, slot, nil) }
-      return Multiplayer::DuelLink::Choice.new("switch", party_slots.sample(random: @rng)) if !party_slots.empty? && @rng.rand(100) < SWITCH_CHANCE
+      if !party_slots.empty? && @rng.rand(100) < SWITCH_CHANCE
+        slot = party_slots.sample(random: @rng)
+        battle.pbRegisterSwitch(index, slot)
+        return Multiplayer::DuelLink::Choice.new("switch", slot)
+      end
       moves = (0...battle.battlers[index].moves.length).select { |slot| battle.pbCanChooseMove?(index, slot, false) }
-      Multiplayer::DuelLink::Choice.new("move", moves.sample(random: @rng) || 0)
+      move = moves.sample(random: @rng) || 0
+      Multiplayer::DuelLink::Choice.new("move", move, target_for(battle, index, move))
+    end
+
+    def target_for(battle, index, move_slot)
+      return nil if battle.singleBattle?
+      roll = @rng.rand(WILD_TARGET_CHANCE + AUTO_TARGET_CHANCE)
+      return nil if roll < AUTO_TARGET_CHANCE - 1
+      slots = (0...battle.battlers.length).to_a
+      return slots.sample(random: @rng) if roll >= WILD_TARGET_CHANCE + AUTO_TARGET_CHANCE - 1
+      move = battle.battlers[index].moves[move_slot]
+      return nil unless move
+      data = move.pbTarget(battle.battlers[index])
+      slots.select { |slot| battle.pbMoveCanTarget?(index, slot, data) }.sample(random: @rng)
     end
 
     def replacement(battle, index)
@@ -118,10 +150,10 @@ module NetworkDuelTest
     peers
   end
 
-  def self.start_links(peers, rng, move_ids)
+  def self.start_links(peers, rng, move_ids, rules = RULES)
     peers.each { |peer| peer.source.party = Multiplayer::PartyCodec.encode(BattleDeterminism.build_party(rng, move_ids)) }
     red, blue = peers
-    red.duel.challenge(blue.client.player_id, RULES)
+    red.duel.challenge(blue.client.player_id, rules)
     invitation = wait_until(peers, "invitation") { blue.duel.take_invitation }
     blue.duel.respond(invitation, true)
     peers.map { |peer| wait_until(peers, "start") { peer.duel.take_start } }
@@ -138,12 +170,12 @@ module NetworkDuelTest
     players.each { |player| raise "battle error: #{player.error}" if player.error }
   end
 
-  def self.finished_duel(peers, rng, move_ids, seed, tally)
-    links = start_links(peers, rng, move_ids)
+  def self.finished_duel(peers, rng, move_ids, seed, tally, rules)
+    links = start_links(peers, rng, move_ids, rules)
     players = links.map.with_index { |link, side| Player.new(link, ScriptedChooser.new(seed + side)) }
     play(peers, players)
     reasons = links.map { |link| link.ending&.reason }
-    tally[reasons.uniq.join("/")] += 1
+    tally["#{rules.format}:#{reasons.uniq.join("/")}"] += 1
     return if reasons == %w[finished finished] && links[0].ending.winner == links[1].ending.winner
     raise "unexpected endings: #{links.map { |link| link.ending.to_a }}"
   end
@@ -184,10 +216,11 @@ module NetworkDuelTest
     seed = 0
     while now < deadline
       seed += 100
-      finished_duel(peers, rng, move_ids, seed, tally)
+      finished_duel(peers, rng, move_ids, seed, tally, ROTATION[(seed / 100) % ROTATION.size])
     end
     report("finished duels: #{tally}")
-    report(seed.positive? ? "PASS" : "FAIL no duel played")
+    played_doubles = tally.keys.any? { |key| key.start_with?("doubles") }
+    report(played_doubles ? "PASS" : "FAIL no doubles played")
   rescue Exception => e
     report("FAIL #{e.class}: #{e.message}\n#{(e.backtrace || []).first(8).join("\n")}")
   ensure

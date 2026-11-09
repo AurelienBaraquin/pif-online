@@ -14,8 +14,8 @@ module RulesDuelTest
   end
 
   module IdleChooser
-    def self.choose(_battle, _index)
-      Multiplayer::DuelLink::Choice.new("move", 0)
+    def self.choose(_battle, indices)
+      indices.to_h { |index| [index, Multiplayer::DuelLink::Choice.new("move", 0)] }
     end
 
     def self.replacement(_battle, _index)
@@ -79,10 +79,10 @@ module RulesDuelTest
   end
 
   # A battle stopped at its first command phase, with battlers on the field.
-  def self.battle(clauses, moves, party_size)
+  def self.battle(clauses, moves, party_size, format = "singles")
     party = Codec.encode(Array.new(party_size) { |slot| pokemon(slot.zero? ? :PIKACHU : :EEVEE, moves: moves) })
     link = Multiplayer::DuelLink.new(SilentClient.new, {
-      "seed" => 1, "side" => 0, "rules" => { "turn_seconds" => 60, "clauses" => clauses },
+      "seed" => 1, "side" => 0, "rules" => { "turn_seconds" => 60, "clauses" => clauses, "format" => format },
       "players" => [{ "name" => "A" }, { "name" => "B" }], "parties" => [party, party]
     })
     built = Multiplayer::DuelRunner.build_battle(link, BattleDeterminism::SilentScene.new, IdleChooser, -> { Fiber.yield })
@@ -167,6 +167,20 @@ module RulesDuelTest
     team_changed_before_sending(peers)
   end
 
+  def self.format_setting
+    menu = Multiplayer::RulesMenu
+    rules = Multiplayer::Duel::Rules.new(1, 0, true, 60)
+    doubles = menu.next_format(rules, 6)
+    check("doubles raises the team to two", doubles.format == "doubles" && doubles.party_size == 2)
+    check("doubles is not offered to a single Pokémon", menu.next_format(rules, 1).format == "singles")
+    check("the doubles team size wraps to two", menu.next_party_size(menu.with(doubles, :party_size, 6), 6).party_size == 2)
+    check("the singles team size wraps to one", menu.next_party_size(menu.with(rules, :party_size, 6), 6).party_size == 1)
+    report("OK   summary: #{menu.summary(doubles).first}")
+    check("the format reaches the wire", doubles.to_wire["format"] == "doubles")
+    built = battle([], [:TACKLE], 2, "doubles")
+    check("the battle is a double battle", built.pbSideSize(0) == 2 && built.battlers.compact.size == 4)
+  end
+
   def self.summary
     rules = Multiplayer::Duel::Rules.new(3, 50, false, 60, Clauses::ALL.map(&:id))
     lines = Multiplayer::RulesMenu.summary(rules)
@@ -211,6 +225,7 @@ module RulesDuelTest
     local_team
     engine_clauses
     summary
+    format_setting
     network
     menus
     report("PASS")

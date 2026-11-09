@@ -49,6 +49,19 @@ const (
 	EndIllegal    = "illegal_party"
 )
 
+// Duel formats, the ids a challenge may name.
+const (
+	FormatSingles = "singles"
+	FormatDoubles = "doubles"
+)
+
+// formatSideSizes gives the number of battlers per side of every format.
+// Adding a format is one entry here and one in the client's Duel::FORMATS.
+var formatSideSizes = map[string]int{
+	FormatSingles: 1,
+	FormatDoubles: 2,
+}
+
 // Actions a player can choose for a round.
 const (
 	ActionMove   = "move"
@@ -101,11 +114,22 @@ type DuelRules struct {
 	TurnSeconds int  `json:"turn_seconds"`
 	// Clauses are the optional rules in force, by id: see duelClauses.
 	Clauses []string `json:"clauses"`
+	// Format is the id of the battle's format: see formatSideSizes.
+	Format string `json:"format"`
+}
+
+// SideSize returns how many battlers each side has in the rules' format.
+func (r DuelRules) SideSize() int {
+	return formatSideSizes[r.Format]
 }
 
 // Validate checks that the rules are within the protocol's bounds.
 func (r DuelRules) Validate() error {
-	if r.PartySize < 1 || r.PartySize > maxPartySize {
+	sideSize, known := formatSideSizes[r.Format]
+	if !known {
+		return invalid("format")
+	}
+	if r.PartySize < sideSize || r.PartySize > maxPartySize {
 		return invalid("party size")
 	}
 	if r.Level < 0 || r.Level > maxLevel {
@@ -285,22 +309,27 @@ func (p DuelParty) Validate(rules DuelRules) error {
 	return p.Appearance.Validate()
 }
 
-// DuelAction is what a player does in a round.
+// DuelAction is what one battler of a side does in a round. Target is a battler
+// index, or nil when the move's target is left to the simulation.
 type DuelAction struct {
 	Action string `json:"action"`
 	Index  int    `json:"index"`
+	Target *int   `json:"target"`
 }
 
-// Validate checks the action and its index for a party of the given rules.
+// Validate checks the action, its index and its target against the rules.
 func (a DuelAction) Validate(rules DuelRules) error {
 	switch a.Action {
 	case ActionMove:
 		if a.Index < 0 || a.Index >= maxMoves {
 			return invalid("move index")
 		}
+		if a.Target != nil && (*a.Target < 0 || *a.Target >= rules.SideSize()*sideCount) {
+			return invalid("target")
+		}
 	case ActionSwitch:
-		if a.Index < 0 || a.Index >= rules.PartySize {
-			return invalid("switch index")
+		if a.Index < 0 || a.Index >= rules.PartySize || a.Target != nil {
+			return invalid("switch")
 		}
 	default:
 		return invalid("action")
@@ -308,10 +337,24 @@ func (a DuelAction) Validate(rules DuelRules) error {
 	return nil
 }
 
-// DuelChoice is a player's action for one round.
+// DuelChoice is a player's actions for one round, one per battler of the side,
+// in battler order.
 type DuelChoice struct {
-	Round int `json:"round"`
-	DuelAction
+	Round   int          `json:"round"`
+	Actions []DuelAction `json:"actions"`
+}
+
+// Validate checks that there is one valid action per battler of the side.
+func (c DuelChoice) Validate(rules DuelRules) error {
+	if len(c.Actions) != rules.SideSize() {
+		return invalid("action count")
+	}
+	for _, action := range c.Actions {
+		if err := action.Validate(rules); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DuelReplacement replaces a fainted or switched-out Pokémon.
@@ -390,10 +433,10 @@ type DuelStart struct {
 	Parties [2][]Pokemon  `json:"parties"`
 }
 
-// DuelTurn reveals a round's choices, in side order.
+// DuelTurn reveals a round's actions, in side order.
 type DuelTurn struct {
-	Round   int           `json:"round"`
-	Choices [2]DuelAction `json:"choices"`
+	Round   int             `json:"round"`
+	Choices [2][]DuelAction `json:"choices"`
 }
 
 // DuelReplaced forwards a replacement to both players.

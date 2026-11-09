@@ -2,10 +2,27 @@ module Multiplayer
   # Client side of the duel flow, from the challenge to the start of the battle.
   # Engine-independent: game_hooks/duel displays what this class queues.
   class Duel
-    Rules = Struct.new(:party_size, :level, :held_items, :turn_seconds, :clauses) do
+    # A battle format; adding one is one entry in FORMATS (and one in the
+    # server's formatSideSizes). battle_mode is the engine's setBattleMode name.
+    Format = Struct.new(:id, :label, :side_size, :battle_mode)
+    FORMATS = [
+      Format.new("singles", "Singles", 1, "single"),
+      Format.new("doubles", "Doubles", 2, "double")
+    ].freeze
+    DEFAULT_FORMAT = FORMATS.first.id
+
+    def self.format_named(id)
+      FORMATS.find { |format| format.id == id }
+    end
+
+    Rules = Struct.new(:party_size, :level, :held_items, :turn_seconds, :clauses, :format) do
+      def initialize(party_size, level, held_items, turn_seconds, clauses = [], format = DEFAULT_FORMAT)
+        super
+      end
+
       def to_wire
-        { "party_size" => party_size, "level" => level,
-          "held_items" => held_items, "turn_seconds" => turn_seconds, "clauses" => clauses || [] }
+        { "party_size" => party_size, "level" => level, "held_items" => held_items,
+          "turn_seconds" => turn_seconds, "clauses" => clauses || [], "format" => format }
       end
     end
     Invitation = Struct.new(:from, :name, :rules)
@@ -86,7 +103,8 @@ module Multiplayer
     def receive_invitation(data)
       rules = data["rules"]
       @invitation = Invitation.new(data["from"].to_i, data["name"], Rules.new(
-        rules["party_size"].to_i, rules["level"].to_i, rules["held_items"], rules["turn_seconds"].to_i, Array(rules["clauses"])
+        rules["party_size"].to_i, rules["level"].to_i, rules["held_items"], rules["turn_seconds"].to_i,
+        Array(rules["clauses"]), rules["format"]
       ))
       @invitation_shown = false
     end

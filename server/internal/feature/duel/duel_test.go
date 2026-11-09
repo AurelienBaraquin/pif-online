@@ -149,22 +149,22 @@ func TestTurnIsRevealedOnlyOnceBothChose(t *testing.T) {
 	begin(alice, bob)
 
 	alice.send(protocol.TypeDuelChoice, protocol.DuelChoice{
-		Round: 1, DuelAction: protocol.DuelAction{Action: protocol.ActionMove, Index: 2},
+		Round: 1, Actions: []protocol.DuelAction{{Action: protocol.ActionMove, Index: 2}},
 	})
 	alice.sync()
 	bob.sync()
 	bob.send(protocol.TypeDuelChoice, protocol.DuelChoice{
-		Round: 1, DuelAction: protocol.DuelAction{Action: protocol.ActionSwitch, Index: 0},
+		Round: 1, Actions: []protocol.DuelAction{{Action: protocol.ActionSwitch, Index: 0}},
 	})
 
 	var turnA, turnB protocol.DuelTurn
 	alice.expect(protocol.TypeDuelTurn, &turnA)
 	bob.expect(protocol.TypeDuelTurn, &turnB)
-	want := protocol.DuelTurn{Round: 1, Choices: [2]protocol.DuelAction{
-		{Action: protocol.ActionMove, Index: 2},
-		{Action: protocol.ActionSwitch, Index: 0},
+	want := protocol.DuelTurn{Round: 1, Choices: [2][]protocol.DuelAction{
+		{{Action: protocol.ActionMove, Index: 2}},
+		{{Action: protocol.ActionSwitch, Index: 0}},
 	}}
-	if turnA != want || turnB != want {
+	if !reflect.DeepEqual(turnA, want) || !reflect.DeepEqual(turnB, want) {
 		t.Fatalf("turns = %+v / %+v", turnA, turnB)
 	}
 	playRound(alice, bob, 2)
@@ -614,5 +614,84 @@ func TestRejectAfterFirstRoundDisconnects(t *testing.T) {
 
 	alice.send(protocol.TypeDuelReject, nil)
 
+	alice.expectKicked()
+}
+
+// beginDoubles starts a doubles duel with teams of two, alice on side 0.
+func beginDoubles(alice, bob *testClient) {
+	alice.t.Helper()
+	rules := protocol.DuelRules{PartySize: 2, HeldItems: true, TurnSeconds: 60, Format: protocol.FormatDoubles}
+	alice.send(protocol.TypeDuelChallenge, protocol.DuelChallenge{Target: bob.id, Rules: rules})
+	bob.expect(protocol.TypeDuelInvited, nil)
+	bob.send(protocol.TypeDuelResponse, protocol.DuelResponse{From: alice.id, Accept: true})
+	alice.expect(protocol.TypeDuelAccepted, nil)
+	bob.expect(protocol.TypeDuelAccepted, nil)
+	party := testParty()
+	party.Party = append(party.Party, party.Party[0])
+	alice.send(protocol.TypeDuelParty, party)
+	bob.send(protocol.TypeDuelParty, party)
+	alice.expect(protocol.TypeDuelStart, nil)
+	bob.expect(protocol.TypeDuelStart, nil)
+}
+
+func doublesChoice(round int) protocol.DuelChoice {
+	return protocol.DuelChoice{Round: round, Actions: []protocol.DuelAction{
+		{Action: protocol.ActionMove, Index: 1, Target: side(3)},
+		{Action: protocol.ActionSwitch, Index: 1},
+	}}
+}
+
+func TestDoublesTurnCarriesEveryBattlersAction(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	beginDoubles(alice, bob)
+
+	alice.send(protocol.TypeDuelChoice, doublesChoice(1))
+	bob.send(protocol.TypeDuelChoice, doublesChoice(1))
+
+	var turn protocol.DuelTurn
+	alice.expect(protocol.TypeDuelTurn, &turn)
+	bob.expect(protocol.TypeDuelTurn, nil)
+	want := [2][]protocol.DuelAction{doublesChoice(1).Actions, doublesChoice(1).Actions}
+	if !reflect.DeepEqual(turn.Choices, want) {
+		t.Fatalf("choices = %+v", turn.Choices)
+	}
+}
+
+func TestDoublesOwesTwoReplacementsInSequence(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	beginDoubles(alice, bob)
+	alice.send(protocol.TypeDuelChoice, doublesChoice(1))
+	bob.send(protocol.TypeDuelChoice, doublesChoice(1))
+	alice.expect(protocol.TypeDuelTurn, nil)
+	bob.expect(protocol.TypeDuelTurn, nil)
+
+	alice.send(protocol.TypeDuelReplacing, nil)
+	alice.send(protocol.TypeDuelReplacement, protocol.DuelReplacement{Seq: 0, Index: 1})
+	alice.expect(protocol.TypeDuelReplaced, nil)
+	bob.expect(protocol.TypeDuelReplaced, nil)
+	alice.send(protocol.TypeDuelReplacing, nil)
+	alice.sync()
+
+	server.clock.advance(time.Minute)
+	alice.expectEnded(protocol.EndTimeout, side(1))
+	bob.expectEnded(protocol.EndTimeout, side(1))
+}
+
+func TestDoublesReplacementLimitScalesWithSideSize(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	beginDoubles(alice, bob)
+	alice.send(protocol.TypeDuelChoice, doublesChoice(1))
+	bob.send(protocol.TypeDuelChoice, doublesChoice(1))
+	alice.expect(protocol.TypeDuelTurn, nil)
+	bob.expect(protocol.TypeDuelTurn, nil)
+	for seq := 0; seq < 16; seq++ {
+		alice.send(protocol.TypeDuelReplacement, protocol.DuelReplacement{Seq: seq, Index: 1})
+		alice.expect(protocol.TypeDuelReplaced, nil)
+		bob.expect(protocol.TypeDuelReplaced, nil)
+	}
+	alice.send(protocol.TypeDuelReplacement, protocol.DuelReplacement{Seq: 16, Index: 1})
 	alice.expectKicked()
 }

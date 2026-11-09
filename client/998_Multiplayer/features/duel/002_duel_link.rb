@@ -3,7 +3,12 @@ module Multiplayer
   # Engine-independent, and fed by Duel as messages arrive.
   class DuelLink
     Ending = Struct.new(:winner, :reason)
-    Choice = Struct.new(:action, :index)
+    # What one battler does in a round. target is a battler index or nil.
+    Choice = Struct.new(:action, :index, :target) do
+      def to_wire
+        { "action" => action, "index" => index, "target" => target }
+      end
+    end
 
     attr_reader :seed, :side, :rules, :players, :parties, :ending
 
@@ -21,8 +26,12 @@ module Multiplayer
       restart_turn_clock
     end
 
-    def send_choice(round, choice)
-      @client.deliver("duel_choice", { "round" => round, "action" => choice.action, "index" => choice.index })
+    def format
+      Duel.format_named(@rules["format"])
+    end
+
+    def send_choice(round, actions)
+      @client.deliver("duel_choice", { "round" => round, "actions" => actions.map(&:to_wire) })
     end
 
     def send_replacement(index)
@@ -53,7 +62,8 @@ module Multiplayer
       @client.deliver("duel_forfeit", nil)
     end
 
-    # Returns both choices of a round in side order, or nil until they arrive.
+    # Returns the actions of each side of a round, in side order, or nil until
+    # they arrive.
     def turn(round)
       @turns[round]
     end
@@ -69,7 +79,7 @@ module Multiplayer
     end
 
     def receive_turn(data)
-      @turns[data["round"].to_i] = data["choices"].map { |choice| parse_choice(choice) }
+      @turns[data["round"].to_i] = data["choices"].map { |actions| actions.map { |action| parse_choice(action) } }
     end
 
     def receive_replacement(data)
@@ -93,7 +103,7 @@ module Multiplayer
     end
 
     def parse_choice(data)
-      Choice.new(data["action"], data["index"].to_i)
+      Choice.new(data["action"], data["index"].to_i, data["target"]&.to_i)
     end
   end
 end

@@ -21,8 +21,8 @@ const (
 	// staleGrace is how long after a match ends its players' in-flight
 	// messages are ignored rather than treated as protocol violations.
 	staleGrace = 15 * time.Second
-	// maxReplacementsPerRound stops a client from extending the timer forever.
-	maxReplacementsPerRound = 8
+	// maxReplacementsPerBattler stops a client from extending the timer forever.
+	maxReplacementsPerBattler = 8
 	// maxPendingHashes bounds memory when one client stops reporting hashes.
 	maxPendingHashes = 256
 	// animationAllowance is the time clients may take to play a round back
@@ -281,15 +281,14 @@ func (f *Feature) handleChoice(sender *session.Session, data json.RawMessage) er
 	if m == nil {
 		return err
 	}
-	if err := choice.DuelAction.Validate(m.rules); err != nil {
+	if err := choice.Validate(m.rules); err != nil {
 		return err
 	}
 	side := m.sideOf(sender.ID())
 	if choice.Round != m.round || m.choices[side] != nil {
 		return fmt.Errorf("%w: choice for round %d in round %d", errWrongState, choice.Round, m.round)
 	}
-	action := choice.DuelAction
-	m.choices[side] = &action
+	m.choices[side] = choice.Actions
 	if !m.hasBothChoices() {
 		return nil
 	}
@@ -314,7 +313,7 @@ func (f *Feature) handleReplacement(sender *session.Session, data json.RawMessag
 		return err
 	}
 	side := m.sideOf(sender.ID())
-	if m.round < 2 || replacement.Seq <= m.lastSeq[side] || m.replacements[side] >= maxReplacementsPerRound {
+	if m.round < 2 || replacement.Seq <= m.lastSeq[side] || m.replacements[side] >= m.replacementLimit() {
 		return fmt.Errorf("%w: replacement seq %d", errWrongState, replacement.Seq)
 	}
 	m.lastSeq[side] = replacement.Seq

@@ -22,11 +22,18 @@ module DisplayFlipTest
   PARTY_SNAPSHOT_FRAME = 38
   PARTY_CURSOR_FRAME = 44
   PARTY_FIRST_PRESS_FRAME = 52
-  DUELS_EXPECTED = 2
+  # Who challenges, by duel: the local player is side 0, the bot makes it side 1.
+  DUELS = [
+    [:local, Multiplayer::Duel::Rules.new(2, 0, true, 60)],
+    [:bot, Multiplayer::Duel::Rules.new(2, 0, true, 60)],
+    [:local, Multiplayer::Duel::Rules.new(2, 0, true, 60, [], "doubles")],
+    [:bot, Multiplayer::Duel::Rules.new(2, 0, true, 60, ["sleep"], "doubles")]
+  ].freeze
+  DUELS_EXPECTED = DUELS.size
+  TARGET_SNAPSHOT_DELAY = 4
   LOCAL_SPECIES = %w[Pikachu Squirtle].freeze
   FOE_NAME = "Bulby"
   ADDRESS = Multiplayer::Config.new("127.0.0.1", 7777)
-  RULES = Multiplayer::Duel::Rules.new(2, 0, true, 60)
   BOT_APPEARANCE = {
     "skin" => 3, "clothes" => "basicnormal", "hair" => "1_afro", "hat" => nil, "hat2" => nil,
     "clothes_color" => 0, "hair_color" => 0, "hat_color" => 0, "hat2_color" => 0
@@ -52,8 +59,8 @@ module DisplayFlipTest
 
   # Always uses its first move, and sends in the first Pokemon able to fight.
   module BotChooser
-    def self.choose(_battle, _index)
-      Multiplayer::DuelLink::Choice.new("move", 0)
+    def self.choose(_battle, indices)
+      indices.to_h { |index| [index, Multiplayer::DuelLink::Choice.new("move", 0)] }
     end
 
     def self.replacement(battle, index)
@@ -71,6 +78,7 @@ module DisplayFlipTest
   @taken = {}
   @completed = 0
   @bot_starts = 0
+  @challenges_sent = 0
   @side = nil
   @scene = nil
   @checked_layout = false
@@ -95,8 +103,9 @@ module DisplayFlipTest
     @failures << "side #{@side}: #{message}"
   end
 
-  def self.begin_duel(side, scene)
+  def self.begin_duel(side, scene, format)
     @side = side
+    @format = format
     @scene = scene
     @checked_layout = false
   end
@@ -107,7 +116,7 @@ module DisplayFlipTest
   end
 
   def self.snapshot(moment)
-    name = "flip_side#{@side}_#{moment}"
+    name = "flip_#{@format == "doubles" ? "doubles_" : ""}side#{@side}_#{moment}"
     return if @taken[name]
     @taken[name] = true
     Graphics.snap_to_bitmap.to_file("#{name}.png")
@@ -137,6 +146,7 @@ module DisplayFlipTest
     foe = sprites["pokemon_#{1 - @side}"]
     own_box = sprites["dataBox_#{@side}"]
     foe_box = sprites["dataBox_#{1 - @side}"]
+    check_double_layout(sprites) if @format == "doubles"
     fail_check("own sprite is not bottom left") unless own.y > foe.y && own.x < foe.x
     fail_check("own data box is not below the foe's") unless own_box.y > foe_box.y
     fail_check("own sprite is not a back sprite") unless own.instance_variable_get(:@back)
@@ -146,6 +156,17 @@ module DisplayFlipTest
     check_trainer("player_1", Multiplayer::LocalPlayer.appearance)
     check_trainer("trainer_1", BOT_APPEARANCE)
     check_fallbacks
+  end
+
+  # Both of the viewer's battlers are near, its first on the left.
+  def self.check_double_layout(sprites)
+    own = [sprites["pokemon_#{@side}"], sprites["pokemon_#{@side + 2}"]]
+    foe = [sprites["pokemon_#{1 - @side}"], sprites["pokemon_#{3 - @side}"]]
+    fail_check("own battlers are not on the near side") unless own.all? { |sprite| sprite.y > foe.map(&:y).max }
+    fail_check("own second is not right of own first") unless own[1].x > own[0].x
+    fail_check("foe second is not left of foe first") unless foe[1].x < foe[0].x
+    fail_check("own boxes are not below the foe's") unless sprites["dataBox_#{@side}"].y > sprites["dataBox_#{1 - @side}"].y
+    fail_check("own second box is not lowest") unless sprites["dataBox_#{@side + 2}"].y > sprites["dataBox_#{@side}"].y
   end
 
   # The sprite must show exactly what the duelist's own appearance generates.
@@ -176,6 +197,12 @@ module DisplayFlipTest
     before = sprite.bitmap
     @scene.send(:dress, sprite, 9)
     fail_check("unknown side replaced the sprite") unless sprite.bitmap.equal?(before)
+  end
+
+  # The default target of a local move is a foe, however the side is mirrored.
+  def self.on_taken_choice(choice)
+    return unless choice.target
+    fail_check("default target #{choice.target} is not a foe") unless choice.target & 1 != @side
   end
 
   def self.on_animation(move_id, user_index)
@@ -306,20 +333,23 @@ module DisplayFlipTest
     @duel.take_notice
   end
 
-  def self.local_challenges_bot
-    return if @local_challenged || Multiplayer::DuelRunner.running
+  def self.issue_next_challenge
+    return if @challenges_sent != @completed || @completed >= DUELS.size
+    return if Multiplayer::DuelRunner.running || @message_depth.positive?
+    challenger, rules = DUELS[@completed]
+    @challenges_sent += 1 if challenger == :local ? local_challenges_bot(rules) : bot_challenges_local(rules)
+  end
+
+  def self.local_challenges_bot(rules)
     local = Multiplayer::Runtime.feature(Multiplayer::Presence::FEATURE_NAME)
     bot = local.players_on($game_map.map_id).first
     duel = Multiplayer::Runtime.feature(Multiplayer::Duel::FEATURE_NAME)
-    return unless bot && duel.idle?
-    @local_challenged = duel.challenge(bot.id, RULES)
+    bot && duel.idle? && duel.challenge(bot.id, rules)
   end
 
-  def self.bot_challenges_local
-    return if @bot_challenged || @completed < 1 || @message_depth.positive?
+  def self.bot_challenges_local(rules)
     local = @presence.players_on($game_map.map_id).first
-    return unless local && @duel.idle?
-    @bot_challenged = @duel.challenge(local.id, RULES)
+    local && @duel.idle? && @duel.challenge(local.id, rules)
   end
 
   def self.check_texts
@@ -351,8 +381,7 @@ module DisplayFlipTest
     start_bot
     return unless @bot
     drive_bot
-    local_challenges_bot
-    bot_challenges_local
+    issue_next_challenge
     verify
   rescue SystemExit
     raise
@@ -380,7 +409,7 @@ module DisplayFlipTest
 
   module SceneProbe
     def pbStartBattle(battle)
-      DisplayFlipTest.begin_duel(@link.side, self)
+      DisplayFlipTest.begin_duel(@link.side, self, @link.rules["format"])
       super
     end
 
@@ -391,6 +420,11 @@ module DisplayFlipTest
 
     def pbCommandMenu(index, first_action)
       DisplayFlipTest.on_command_menu(index)
+      super
+    end
+
+    def pbChooseTarget(idx_battler, target_data, visible_sprites = nil)
+      DisplayFlipTest.schedule("target", TARGET_SNAPSHOT_DELAY)
       super
     end
 
@@ -421,10 +455,15 @@ module DisplayFlipTest
   end
 
   module ScriptedChooser
-    def choose(battle, index)
+    def choose(battle, indices)
       return super unless DisplayFlipTest.take_party_turn?
+      index = indices.first
       switched = DisplayFlipTest.with_party_turn { battle.pbPartyMenu(index) }
-      switched ? take_choice(battle, index) : super
+      switched ? { index => take_choice(battle, index) } : super
+    end
+
+    def take_choice(battle, index)
+      super.tap { |choice| DisplayFlipTest.on_taken_choice(choice) }
     end
   end
 

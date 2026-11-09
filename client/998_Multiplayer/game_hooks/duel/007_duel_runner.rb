@@ -118,7 +118,7 @@ module Multiplayer
       battle.party2starts = [0]
       battle.configure(link: link, chooser: chooser, waiter: waiter)
       pbPrepareBattle(battle)
-      isolate(battle)
+      isolate(battle, link)
       DuelClauses.apply_to(battle, link.rules["clauses"])
       battle
     end
@@ -126,8 +126,8 @@ module Multiplayer
     # Undoes what pbPrepareBattle derives from the local save and map: the size
     # from the options, the weather and surroundings from the overworld, and
     # any battle rule left behind by an event.
-    def self.isolate(battle)
-      battle.setBattleMode("single")
+    def self.isolate(battle, link)
+      battle.setBattleMode(link.format.battle_mode)
       battle.defaultWeather = :None
       battle.defaultTerrain = :None
       battle.environment = :None

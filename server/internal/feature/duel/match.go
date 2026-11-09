@@ -27,7 +27,7 @@ type match struct {
 	appearances [2]protocol.Appearance
 
 	round        int
-	choices      [2]*protocol.DuelAction
+	choices      [2][]protocol.DuelAction
 	lastSeq      [2]int
 	replacements [2]int
 	// owesReplacement holds each side's own admission that it must replace.
@@ -66,6 +66,11 @@ func (m *match) resolvingDuration() time.Duration {
 	return m.turnDuration() + animationAllowance
 }
 
+// replacementLimit bounds a side's replacements in one round, per battler.
+func (m *match) replacementLimit() int {
+	return maxReplacementsPerBattler * m.rules.SideSize()
+}
+
 // bothHashedRound reports whether both sides finished the last resolved round.
 func (m *match) bothHashedRound() bool {
 	return m.hashed[0] == m.round-1 && m.hashed[1] == m.round-1
@@ -84,10 +89,10 @@ func (m *match) hasBothChoices() bool {
 func (m *match) resolveRound() protocol.DuelTurn {
 	turn := protocol.DuelTurn{
 		Round:   m.round,
-		Choices: [2]protocol.DuelAction{*m.choices[0], *m.choices[1]},
+		Choices: m.choices,
 	}
 	m.round++
-	m.choices = [2]*protocol.DuelAction{}
+	m.choices = [2][]protocol.DuelAction{}
 	m.replacements = [2]int{}
 	m.owesReplacement = [2]bool{}
 	return turn

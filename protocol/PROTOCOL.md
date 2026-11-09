@@ -1,6 +1,6 @@
 # PIF Online protocol
 
-Version: **4**
+Version: **5**
 
 The client and the server exchange UTF-8 JSON objects over TCP, one object per
 line (`\n`). A line never exceeds 16 KiB. Each object has a type `t` and an
@@ -27,7 +27,12 @@ at most 64 characters among letters, digits, space, `_`, `-`, `.`, and never
 
 `rules`: `party_size` (1-6), `level` (0 keeps each Pokémon's level, otherwise
 1-100), `held_items` (bool), `turn_seconds` (30-300), `clauses` (array of
-distinct clause ids, possibly empty or null).
+distinct clause ids, possibly empty or null), `format` (`singles` or `doubles`;
+`party_size` must be at least the format's battlers per side: 1 or 2).
+
+`action`: `action` (`move` or `switch`), `index` (a move slot 0-3, or a party
+slot below `party_size`), `target` (a battler index below twice the battlers per
+side, or null; a `switch` must have null).
 
 `pokemon`: `species`, `nature` (symbol: at most 32 letters, digits or `_`);
 `level` (1-100), `form` (0-99), `personal_id` (0-4294967295), `gender` (0-2);
@@ -56,7 +61,7 @@ Clause ids: `sleep`, `freeze`, `ohko`, `evasion`, `perish`, `skill_swap`,
 | `duel_challenge` | `target`, `rules` | Challenges a player |
 | `duel_response` | `from`, `accept` | Answers a challenge from `from` |
 | `duel_party` | `party` (array of `pokemon`), `appearance` | The player's team and look, after `duel_accepted` |
-| `duel_choice` | `round`, `action` (`move` or `switch`), `index` | Action for a round |
+| `duel_choice` | `round`, `actions` (array of `action`, one per battler of the side) | Actions for a round |
 | `duel_replacement` | `seq`, `index` | Replaces a fainted or U-turned Pokémon |
 | `duel_hash` | `round`, `hash` (1-64 characters) | State hash after a resolved round |
 | `duel_result` | `winner` (0, 1 or null) | The outcome this client simulated |
@@ -79,7 +84,7 @@ Clause ids: `sleep`, `freeze`, `ohko`, `evasion`, `perish`, `skill_swap`,
 | `duel_declined` | `target`, `reason` | The challenge with player `target` is off |
 | `duel_accepted` | `opponent` | Challenge accepted: send `duel_party` |
 | `duel_start` | `seed`, `side`, `rules`, `players`, `parties` | The duel begins |
-| `duel_turn` | `round`, `choices` | Both choices of a round, in side order |
+| `duel_turn` | `round`, `choices` (two arrays of `action`, in side order) | Both sides' actions for a round |
 | `duel_replaced` | `side`, `seq`, `index` | A side's replacement, sent to both |
 | `duel_ended` | `winner` (0, 1 or null), `reason` | The duel is over |
 
@@ -91,8 +96,10 @@ A player is visible to a client when the player's map is in that client's
 
 The server does not simulate battles: both clients simulate the same duel from
 `seed` (uint32). `side` is the receiver's side, 0 for the challenger and 1 for
-the challenged player. `players` (`{id, name, appearance}`) and `parties` are in
-side order and identical for both clients. A `duel_party` without `appearance` draws
+the challenged player. Battler indices are identical for both clients: a side's
+battlers are its index plus twice their position (doubles: 0 and 2 on side 0, 1
+and 3 on side 1). `players` (`{id, name, appearance}`) and `parties` are in side
+order and identical for both clients. A `duel_party` without `appearance` draws
 that player with an empty `appearance`.
 
 A player is in at most one challenge or duel. `duel_declined` reasons are
@@ -123,11 +130,16 @@ neither chosen nor sent `duel_result` loses by `timeout`; if both are missing
 there is no winner. A side that sent `duel_replacing` and has not yet sent its
 `duel_replacement` loses by `timeout` when the other side has not done the same;
 this is an admission a client can only make against itself, so the server
-trusts it. `duel_choice` must name the current round, once per player.
-`index` is a move slot (0-3) or a party slot (below `party_size`).
+trusts it. `duel_choice` must name the current round, once per player, with
+exactly one `action` per battler of the side, in battler order; an entry for a
+battler that cannot act is ignored by the simulation. A client resolves targets
+through the simulation, so `target` may be null. Menu navigation and cancelling,
+including going back to the previous battler, stay local.
 
 `duel_replacing` and `duel_replacement` are only valid after round 1 resolved. `seq` starts at 0 or
-more and must grow per side, gaps being allowed; at most 8 per side per round.
+more and must grow per side, gaps being allowed; at most 8 per battler of the
+side per round. A side that must replace two battlers sends `duel_replacing`
+and `duel_replacement` once for each, in battler order.
 
 `duel_hash` is sent for each resolved round, in order. Hashes are compared per
 round once both are in; a mismatch ends the duel with `desync` and no winner.

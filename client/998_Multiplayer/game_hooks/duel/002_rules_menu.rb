@@ -28,11 +28,32 @@ module Multiplayer
 
     def self.settings_for(rules, max_party_size)
       [
-        Setting.new(_INTL("Team size: {1}", rules.party_size), ->(r) { with(r, :party_size, r.party_size % max_party_size + 1) }),
+        Setting.new(_INTL("Format: {1}", format_label(rules)), ->(r) { next_format(r, max_party_size) }),
+        Setting.new(_INTL("Team size: {1}", rules.party_size), ->(r) { next_party_size(r, max_party_size) }),
         Setting.new(_INTL("Level: {1}", level_label(rules.level)), ->(r) { with(r, :level, next_value(LEVELS, r.level)) }),
         Setting.new(_INTL("Held items: {1}", held_items_label(rules)), ->(r) { with(r, :held_items, !r.held_items) }),
         Setting.new(_INTL("Turn timer: {1}s", rules.turn_seconds), ->(r) { with(r, :turn_seconds, next_value(TURN_SECONDS, r.turn_seconds)) })
       ]
+    end
+
+    def self.format_of(rules)
+      Duel.format_named(rules.format)
+    end
+
+    def self.format_label(rules)
+      _INTL(format_of(rules).label)
+    end
+
+    # Formats needing more battlers than the team has are skipped.
+    def self.next_format(rules, max_party_size)
+      playable = Duel::FORMATS.select { |format| format.side_size <= max_party_size }
+      format = playable[(playable.index(format_of(rules)) + 1) % playable.size]
+      with(with(rules, :format, format.id), :party_size, [rules.party_size, format.side_size].max)
+    end
+
+    # Wraps to the smallest team the format allows.
+    def self.next_party_size(rules, max_party_size)
+      with(rules, :party_size, rules.party_size >= max_party_size ? format_of(rules).side_size : rules.party_size + 1)
     end
 
     def self.clauses_label(rules)
@@ -80,7 +101,7 @@ module Multiplayer
 
     # One message per entry, so that no window overflows.
     def self.summary(rules)
-      base = _INTL("Team of {1}, level {2}, held items {3}, {4}s per turn.", rules.party_size,
+      base = _INTL("{1}, team of {2}, level {3}, held items {4}, {5}s per turn.", format_label(rules), rules.party_size,
                    level_label(rules.level), held_items_label(rules).downcase, rules.turn_seconds)
       labels = DuelClauses.named(rules.clauses).map { |clause| _INTL(clause.label) }
       [base] + labels.each_slice(CLAUSES_PER_SUMMARY_LINE).map { |slice| slice.join(", ") + "." }

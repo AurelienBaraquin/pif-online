@@ -25,14 +25,18 @@ func TestDuelRulesValidate(t *testing.T) {
 		rules DuelRules
 		valid bool
 	}{
-		{"accepts bounds", DuelRules{PartySize: 6, Level: 100, TurnSeconds: 300}, true},
-		{"accepts unchanged level", DuelRules{PartySize: 1, TurnSeconds: 30}, true},
-		{"rejects empty party", DuelRules{TurnSeconds: 30}, false},
-		{"rejects large party", DuelRules{PartySize: 7, TurnSeconds: 30}, false},
-		{"rejects level above max", DuelRules{PartySize: 1, Level: 101, TurnSeconds: 30}, false},
-		{"rejects negative level", DuelRules{PartySize: 1, Level: -1, TurnSeconds: 30}, false},
-		{"rejects short turn", DuelRules{PartySize: 1, TurnSeconds: 29}, false},
-		{"rejects long turn", DuelRules{PartySize: 1, TurnSeconds: 301}, false},
+		{"accepts bounds", DuelRules{PartySize: 6, Level: 100, TurnSeconds: 300, Format: FormatSingles}, true},
+		{"accepts unchanged level", DuelRules{PartySize: 1, TurnSeconds: 30, Format: FormatSingles}, true},
+		{"rejects empty party", DuelRules{TurnSeconds: 30, Format: FormatSingles}, false},
+		{"rejects large party", DuelRules{PartySize: 7, TurnSeconds: 30, Format: FormatSingles}, false},
+		{"rejects level above max", DuelRules{PartySize: 1, Level: 101, TurnSeconds: 30, Format: FormatSingles}, false},
+		{"rejects negative level", DuelRules{PartySize: 1, Level: -1, TurnSeconds: 30, Format: FormatSingles}, false},
+		{"rejects short turn", DuelRules{PartySize: 1, TurnSeconds: 29, Format: FormatSingles}, false},
+		{"rejects long turn", DuelRules{PartySize: 1, TurnSeconds: 301, Format: FormatSingles}, false},
+		{"accepts doubles with two", DuelRules{PartySize: 2, TurnSeconds: 60, Format: FormatDoubles}, true},
+		{"rejects doubles with one", DuelRules{PartySize: 1, TurnSeconds: 60, Format: FormatDoubles}, false},
+		{"rejects unknown format", DuelRules{PartySize: 3, TurnSeconds: 60, Format: "triples"}, false},
+		{"rejects missing format", DuelRules{PartySize: 3, TurnSeconds: 60}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,21 +116,48 @@ func TestDuelPartyValidateLength(t *testing.T) {
 }
 
 func TestDuelActionValidate(t *testing.T) {
-	rules := DuelRules{PartySize: 3, TurnSeconds: 60}
+	rules := DuelRules{PartySize: 3, TurnSeconds: 60, Format: FormatDoubles}
 	cases := []struct {
 		action DuelAction
 		valid  bool
 	}{
-		{DuelAction{ActionMove, 3}, true},
-		{DuelAction{ActionMove, 4}, false},
-		{DuelAction{ActionMove, -1}, false},
-		{DuelAction{ActionSwitch, 2}, true},
-		{DuelAction{ActionSwitch, 3}, false},
-		{DuelAction{"run", 0}, false},
+		{DuelAction{ActionMove, 3, nil}, true},
+		{DuelAction{ActionMove, 0, number(3)}, true},
+		{DuelAction{ActionMove, 0, number(4)}, false},
+		{DuelAction{ActionMove, 0, number(-1)}, false},
+		{DuelAction{ActionMove, 4, nil}, false},
+		{DuelAction{ActionMove, -1, nil}, false},
+		{DuelAction{ActionSwitch, 2, nil}, true},
+		{DuelAction{ActionSwitch, 2, number(0)}, false},
+		{DuelAction{ActionSwitch, 3, nil}, false},
+		{DuelAction{"run", 0, nil}, false},
 	}
 	for _, tc := range cases {
 		if err := tc.action.Validate(rules); (err == nil) != tc.valid {
 			t.Errorf("%+v: %v", tc.action, err)
+		}
+	}
+}
+
+func TestDuelChoiceNeedsOneActionPerBattler(t *testing.T) {
+	singles := DuelRules{PartySize: 1, TurnSeconds: 60, Format: FormatSingles}
+	doubles := DuelRules{PartySize: 2, TurnSeconds: 60, Format: FormatDoubles}
+	action := DuelAction{Action: ActionMove}
+	cases := []struct {
+		rules   DuelRules
+		actions []DuelAction
+		valid   bool
+	}{
+		{singles, []DuelAction{action}, true},
+		{singles, []DuelAction{action, action}, false},
+		{singles, nil, false},
+		{doubles, []DuelAction{action, action}, true},
+		{doubles, []DuelAction{action}, false},
+		{doubles, []DuelAction{action, action, action}, false},
+	}
+	for _, tc := range cases {
+		if err := (DuelChoice{Round: 1, Actions: tc.actions}).Validate(tc.rules); (err == nil) != tc.valid {
+			t.Errorf("%+v: %v", tc.actions, err)
 		}
 	}
 }
@@ -217,7 +248,7 @@ func TestDuelRulesClauses(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rules := DuelRules{PartySize: 1, TurnSeconds: 60, Clauses: tc.clauses}
+			rules := DuelRules{PartySize: 1, TurnSeconds: 60, Clauses: tc.clauses, Format: FormatSingles}
 			if err := rules.Validate(); (err == nil) != tc.valid {
 				t.Fatalf("Validate() = %v", err)
 			}

@@ -15,7 +15,7 @@ module DuelRobustnessTest
   LOCAL_FORFEITED = "You forfeited the duel."
   BOT_NAME = "Bot"
 
-  Scenario = Struct.new(:name, :turn_seconds, :move, :local_text, :bot_text, :steps)
+  Scenario = Struct.new(:name, :turn_seconds, :move, :local_text, :bot_text, :steps, :format)
 
   # Builds the bot's party: its move decides whether the local player faints.
   def self.bot_party(move)
@@ -98,7 +98,7 @@ module DuelRobustnessTest
   end
 
   def self.bot_chooses
-    action { @bot_link.send_choice(1, Choice.new("move", 0)) }
+    action { @bot_link.send_choice(1, Array.new(@bot_link.format.side_size) { Choice.new("move", 0) }) }
   end
 
   def self.bot_disconnects
@@ -117,8 +117,32 @@ module DuelRobustnessTest
     [timer_open, after(20), press(Input::DOWN), after(10), press(Input::USE), overlay_open, after(20)]
   end
 
+  def self.local_battle
+    Multiplayer::DuelRunner.scene.instance_variable_get(:@battle)
+  end
+
+  # The local player is on side 1: its first battler is 1 and its second is 3.
+  def self.first_battler_chose_a_target
+    action { raise "first battler's target lost: #{local_battle.choices[1]}" unless local_battle.choices[1][3] >= 0 }
+  end
+
+  def self.first_battler_cleared
+    action { raise "first battler still chosen: #{local_battle.choices[1]}" unless local_battle.choices[1][0] == :None }
+  end
+
+  def self.choose_first_battler
+    [timer_open, after(20), press(Input::USE), after(20), press(Input::USE), after(20), press(Input::USE), after(30)]
+  end
+
   def self.scenarios
     [
+      Scenario.new("doubles: opponent forfeits during the second battler's menu", 60, "GROWL", "Bot forfeited. You won the duel!", LOCAL_FORFEITED,
+                   choose_first_battler + [first_battler_chose_a_target, bot_forfeit], "doubles"),
+      Scenario.new("doubles: going back clears the first battler's choice", 60, "GROWL", "Bot forfeited. You won the duel!", LOCAL_FORFEITED,
+                   choose_first_battler + [press(Input::BACK), after(30), first_battler_cleared, bot_forfeit], "doubles"),
+      Scenario.new("doubles: the turn resolves with both local actions", 60, "GROWL", "Bot forfeited. You won the duel!", LOCAL_FORFEITED,
+                   choose_first_battler + [press(Input::USE), after(20), press(Input::USE), after(20), press(Input::USE), after(20),
+                                           bot_chooses, bot_turn_received, after(40), bot_forfeit], "doubles"),
       Scenario.new("forfeit while the fight menu is open", 60, "GROWL", "Bot forfeited. You won the duel!", LOCAL_FORFEITED,
                    [timer_open, after(20), snapshot("test_timer.png"), press(Input::USE), after(20), bot_forfeit]),
       Scenario.new("forfeit while the party screen is open", 60, "GROWL", "Bot forfeited. You won the duel!", LOCAL_FORFEITED,
@@ -239,7 +263,7 @@ module DuelRobustnessTest
     @first_message_frame = nil
     @party_source.move = current.move
     @step_list = current.steps.dup
-    rules = Multiplayer::Duel::Rules.new(PARTY_SIZE, 0, true, current.turn_seconds)
+    rules = Multiplayer::Duel::Rules.new(PARTY_SIZE, 0, true, current.turn_seconds, [], current.format || "singles")
     @bot_duel.challenge(local_client.player_id, rules)
     @state = :starting
   end

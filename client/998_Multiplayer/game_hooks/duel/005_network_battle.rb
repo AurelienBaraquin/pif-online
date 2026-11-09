@@ -34,10 +34,10 @@ module Multiplayer
   # both simulations apply them at the same moment.
   class NetworkBattle < PokeBattle_Battle
     NO_ACTION = DuelLink::Choice.new("move", 0).freeze
-    SIDES = [0, 1].freeze
 
-    # chooser responds to choose(battle, index), returning a DuelLink::Choice or
-    # nil to forfeit, and to replacement(battle, index). waiter lets one frame pass.
+    # chooser responds to choose(battle, indices), given the local battlers that
+    # must act, returning a hash of battler index to DuelLink::Choice or nil to
+    # forfeit, and to replacement(battle, index). waiter lets one frame pass.
     def configure(link:, chooser:, waiter:)
       @link = link
       @chooser = chooser
@@ -64,14 +64,26 @@ module Multiplayer
       send_local_choice(round)
       show_waiting unless @link.turn(round)
       choices = wait_for { @link.turn(round) }
-      SIDES.each { |index| apply_choice(index, choices[index]) }
+      @battlers.each_index { |index| apply_action(index, choices[index & 1][index / 2]) }
     end
 
+    # The engine asks for an Encored move's target only on side 0, and through a
+    # menu even when applying the opponent's choice.
+    def pbAutoChooseMove(index, show_messages = true)
+      return super if singleBattle?
+      battler = @battlers[index]
+      encored = battler.pbEncoredMoveIndex
+      return super unless encored >= 0 && pbCanChooseMove?(index, encored, false)
+      move = battler.moves[encored]
+      pbRegisterMove(index, encored, false)
+      return true unless show_messages
+      pbDisplayPaused(_INTL("{1} has to use {2}!", battler.name, move.name))
+      pbChooseTarget(battler, move)
+    end
+
+    # The only entry point for a chosen replacement: Roar-like moves use the
+    # engine's random path, which goes through pbRandom.
     def pbSwitchInBetween(index, _lax = false, _cancel = false)
-      replacement(index)
-    end
-
-    def pbGetReplacementPokemonIndex(index, _random = false)
       replacement(index)
     end
 
@@ -85,33 +97,43 @@ module Multiplayer
 
     private
 
+    def local_indices
+      (0...@link.format.side_size).map { |slot| slot * 2 + @link.side }
+    end
+
+    def can_act?(index)
+      pbCanShowCommands?(index) && @choices[index][0] == :None
+    end
+
     def send_local_choice(round)
-      index = @link.side
-      choice = pbCanShowCommands?(index) && @choices[index][0] == :None ? @chooser.choose(self, index) : NO_ACTION
-      if choice.nil?
+      indices = local_indices
+      acting = indices.select { |index| can_act?(index) }
+      chosen = acting.empty? ? {} : @chooser.choose(self, acting)
+      if chosen.nil?
         @link.forfeit
         wait_for { nil }
       end
-      @link.send_choice(round, choice)
+      @link.send_choice(round, indices.map { |index| chosen.fetch(index, NO_ACTION) })
     end
 
-    def apply_choice(index, choice)
-      return if @choices[index][0] != :None || !pbCanShowCommands?(index)
-      if choice.action == "switch" && pbRegisterSwitch(index, choice.index)
-        return
-      end
-      return if choice.action == "move" && pbCanChooseMove?(index, choice.index, false) && pbRegisterMove(index, choice.index, false)
-      pbAutoChooseMove(index, false)
+    # Runs on both clients in battler order, so one action can see the ones
+    # applied before it (Pokémon already picked to switch in).
+    def apply_action(index, action)
+      return unless can_act?(index)
+      return if action.action == "switch" && pbRegisterSwitch(index, action.index)
+      registered = action.action == "move" && pbCanChooseMove?(index, action.index, false) && pbRegisterMove(index, action.index, false)
+      pbAutoChooseMove(index, false) unless registered
+      pbRegisterTarget(index, action.target) if action.target
     end
 
     def replacement(index)
-      if index == @link.side
+      if index & 1 == @link.side
         @link.send_replacing
         @link.send_replacement(@chooser.replacement(self, index))
       else
         show_waiting
       end
-      wait_for { @link.next_replacement(index) }
+      wait_for { @link.next_replacement(index & 1) }
     end
 
     def show_waiting

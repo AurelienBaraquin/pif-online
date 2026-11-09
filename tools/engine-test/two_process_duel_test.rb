@@ -14,7 +14,7 @@ module TwoProcessDuelTest
   MINIMUM_DUELS = 10
   MEETING_MAP = 1
   MEETING_STATE = Multiplayer::Presence::State.new(MEETING_MAP, 0, 0, 2, 1)
-  RULES = NetworkDuelTest::RULES
+  ROTATION = NetworkDuelTest::ROTATION
   # Advances with every frame, whatever the duel does.
   CLOCK_FIELDS = %i[@newFrameCount].freeze
   # Draws of the global generator that cannot reach the simulation: nothing in
@@ -117,12 +117,13 @@ module TwoProcessDuelTest
   end
 
   class Match
-    attr_reader :tally, :rounds, :save_changes
+    attr_reader :tally, :rounds, :save_changes, :format_counts
 
     def initialize(peer, presence)
       @peer = peer
       @presence = presence
       @tally = Hash.new(0)
+      @format_counts = Hash.new(0)
       @rounds = 0
       @save_changes = Hash.new(0)
       @baseline = SaveSnapshot.take
@@ -172,7 +173,7 @@ module TwoProcessDuelTest
       while TwoProcessDuelTest.now < deadline
         opponent = wait_for(DUEL_WAIT, "opponent") { other_player }
         wait_for(DUEL_WAIT, "idle") { @peer.duel.idle? }
-        @peer.duel.challenge(opponent.id, RULES)
+        @peer.duel.challenge(opponent.id, ROTATION[duels % ROTATION.size])
         outcome = wait_for(DUEL_WAIT, "duel start") { @peer.duel.take_start || @peer.duel.take_notice }
         return outcome if outcome.is_a?(Multiplayer::DuelLink)
       end
@@ -216,6 +217,7 @@ module TwoProcessDuelTest
     def record_outcome(link)
       reason = link.ending.reason
       @tally = @tally.merge(reason => @tally[reason] + 1)
+      @format_counts = @format_counts.merge(link.rules["format"] => @format_counts[link.rules["format"]] + 1)
       TwoProcessDuelTest.report("duel #{duels}: #{reason} winner=#{link.ending.winner}") unless reason == "finished"
     end
   end
@@ -236,6 +238,7 @@ module TwoProcessDuelTest
 
   def self.verdict(match)
     return "FAIL only #{match.duels} duels" if match.duels < MINIMUM_DUELS
+    return "FAIL no doubles duel" if match.format_counts["doubles"].zero?
     return "FAIL endings #{match.tally}" unless match.tally.keys == ["finished"]
     return "FAIL save changed: #{match.save_changes.keys.join(", ")}" unless match.save_changes.empty?
     harmful = draw_sites.reject { |site, _count| site.include?(HARMLESS_DRAW_SITE) }
@@ -257,7 +260,7 @@ module TwoProcessDuelTest
     match = Match.new(peer, presence)
     match.play_all(now + TIME_BUDGET)
     peer.client.stop
-    report("duels=#{match.duels} rounds=#{match.rounds} endings=#{match.tally}")
+    report("duels=#{match.duels} rounds=#{match.rounds} formats=#{match.format_counts} endings=#{match.tally}")
     report("global draws: #{draw_sites}")
     report("save changes: #{match.save_changes}")
     report(verdict(match))

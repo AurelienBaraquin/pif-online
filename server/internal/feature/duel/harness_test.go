@@ -182,7 +182,7 @@ func (c *testClient) expectDeclined(target uint32, reason string) {
 
 func side(value int) *int { return &value }
 
-var testRules = protocol.DuelRules{PartySize: 1, HeldItems: true, TurnSeconds: 60}
+var testRules = protocol.DuelRules{PartySize: 1, HeldItems: true, TurnSeconds: 60, Format: protocol.FormatSingles}
 
 func testParty() protocol.DuelParty {
 	return protocol.DuelParty{Party: []protocol.Pokemon{{
@@ -222,8 +222,8 @@ func begin(alice, bob *testClient) {
 func choose(client *testClient, round int) {
 	client.t.Helper()
 	client.send(protocol.TypeDuelChoice, protocol.DuelChoice{
-		Round:      round,
-		DuelAction: protocol.DuelAction{Action: protocol.ActionMove, Index: 0},
+		Round:   round,
+		Actions: []protocol.DuelAction{{Action: protocol.ActionMove, Index: 0}},
 	})
 }
 

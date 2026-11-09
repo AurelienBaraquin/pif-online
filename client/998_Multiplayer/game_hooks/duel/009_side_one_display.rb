@@ -102,13 +102,14 @@ module Multiplayer
 
     # Draw order of the battler sprites, by place on screen.
     module Depth
-      BACK_Z = 50
-      FRONT_Z = 45
+      BASE_Z = 50
+      Z_STEP = 5
 
       def pbSetPosition
         super
         return unless SideOneDisplay.active? && @_iconBitmap
-        self.z = SideOneDisplay.screen_index(@index).even? ? BACK_Z : FRONT_Z
+        screen = SideOneDisplay.screen_index(@index)
+        self.z = screen.even? ? BASE_Z + Z_STEP * screen / 2 : BASE_Z - Z_STEP * (screen + 1) / 2
       end
     end
 
@@ -232,6 +233,8 @@ module Multiplayer
   # The scene of a duel played from side 1. Sprites stay named by real battler
   # index; only their places on screen are swapped.
   class SideOneBattleScene < NetworkBattleScene
+    TARGET_SELECT_MODE = 2
+
     def pbStartBattle(battle)
       super(SideOneDisplay::BattleView.new(battle))
     end
@@ -239,6 +242,27 @@ module Multiplayer
     # The two bases are scenery: the near one stays near.
     def pbCreateBackdropSprites
       SideOneDisplay.unmirrored { super }
+    end
+
+    # The target window lays out and navigates places on screen, so it works
+    # in screen indices; the chosen place is turned back into a battler here.
+    def pbChooseTarget(idx_battler, target_data, visible_sprites = nil)
+      place = super
+      place.negative? ? place : SideOneDisplay.screen_index(place)
+    end
+
+    def pbCreateTargetTexts(idx_battler, target_data)
+      places_of(super)
+    end
+
+    def pbFirstTarget(idx_battler, target_data)
+      SideOneDisplay.screen_index(super)
+    end
+
+    # Mode 2 is the target window's: a place or the names of several places.
+    def pbSelectBattler(selected, select_mode = 1)
+      return super unless select_mode == TARGET_SELECT_MODE
+      super(selected.is_a?(Array) ? places_of(selected) : SideOneDisplay.screen_index(selected), select_mode)
     end
 
     def pbFindMoveAnimDetails(move2anim, move_id, user_index, hit_number = 0)
@@ -258,6 +282,13 @@ module Multiplayer
       @animations.push(LineupAppearAnimation.new(@sprites, @viewport, SideOneDisplay.screen_index(side),
                                                  @battle.pbParty(side), @battle.pbPartyStarts(side), full_animation))
       pbUpdate while !full_animation && inPartyAnimation?
+    end
+
+    private
+
+    # Reorders values indexed by battler into values indexed by place, or back.
+    def places_of(values)
+      Array.new(values.size) { |index| values[index ^ 1] }
     end
   end
 end

@@ -39,8 +39,8 @@ module InteractionTest
 
   # Always uses its first move.
   module BotChooser
-    def self.choose(_battle, _index)
-      Multiplayer::DuelLink::Choice.new("move", 0)
+    def self.choose(_battle, indices)
+      indices.to_h { |index| [index, Multiplayer::DuelLink::Choice.new("move", 0)] }
     end
 
     def self.replacement(_battle, _index)
