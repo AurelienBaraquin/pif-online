@@ -1,10 +1,14 @@
-# Drives the interaction window in the real game with scripted key presses: the
-# local player challenges a bot, then the bot challenges the local player.
-# Writes test_result.txt and a screenshot of each menu.
+# Drives the interaction window and the battle UI in the real game with scripted
+# key presses: the local player challenges a bot, then the bot challenges the
+# local player. The bot plays its own NetworkBattle in a Fiber. Loaded after
+# battle_determinism_test.rb. Writes test_result.txt and screenshots.
 
 module InteractionTest
   RESULT_FILE = "test_result.txt"
-  TIMEOUT_FRAMES = 4000
+  TIMEOUT_FRAMES = 6500
+  BATTLE_PRESS_INTERVAL = 8
+  BATTLE_SNAPSHOT_INTERVAL = 220
+  MAX_BATTLE_SNAPSHOTS = 8
   SNAPSHOT_FRAME = 55
   FIRST_PRESS_FRAME = 60
   PRESS_INTERVAL = 25
@@ -16,7 +20,7 @@ module InteractionTest
     "clothes_color" => 0, "hair_color" => 0, "hat_color" => 0, "hat2_color" => 0
   }.freeze
   BOT_POKEMON = {
-    "species" => "BULBASAUR", "level" => 20, "form" => 0, "personal_id" => 1, "gender" => 0, "nature" => "HARDY",
+    "species" => "BULBASAUR", "level" => 5, "form" => 0, "personal_id" => 1, "gender" => 0, "nature" => "HARDY",
     "ability" => "OVERGROW", "ability_index" => 0, "item" => nil, "happiness" => 70, "iv" => [1, 2, 3, 4, 5, 6],
     "iv_maxed" => [false] * 6, "ev" => [0] * 6, "moves" => [{ "id" => "TACKLE", "pp" => 35, "ppup" => 0 }],
     "name" => "Bulby", "shiny" => false, "head_shiny" => false, "body_shiny" => false,
@@ -29,7 +33,19 @@ module InteractionTest
     end
   end
 
+  # Always uses its first move.
+  module BotChooser
+    def self.choose(_battle, _index)
+      Multiplayer::DuelLink::Choice.new("move", 0)
+    end
+
+    def self.replacement(_battle, _index)
+      0
+    end
+  end
+
   @frame = 0
+  @battle_snapshots = 0
   @message_frame = 0
   @message_depth = 0
   @snapshots = 0
@@ -48,6 +64,7 @@ module InteractionTest
   end
 
   def self.press?
+    return (@frame % BATTLE_PRESS_INTERVAL).zero? if Multiplayer::DuelRunner.running && @message_depth.zero?
     return false if @message_depth.zero? || @message_frame < FIRST_PRESS_FRAME
     ((@message_frame - FIRST_PRESS_FRAME) % PRESS_INTERVAL).zero?
   end
@@ -66,9 +83,42 @@ module InteractionTest
   def self.on_frame
     @frame += 1
     finish("FAIL timeout, messages=#{@messages.size}") if @frame > TIMEOUT_FRAMES
+    drive_network
+    snapshot_battle
     return unless @message_depth.positive?
     @message_frame += 1
     snapshot if @message_frame == SNAPSHOT_FRAME && !@snapshot_taken
+  end
+
+  def self.snapshot_battle
+    return unless Multiplayer::DuelRunner.running && (@frame % BATTLE_SNAPSHOT_INTERVAL).zero?
+    return if @battle_snapshots >= MAX_BATTLE_SNAPSHOTS
+    @battle_snapshots += 1
+    Graphics.snap_to_bitmap.to_file("test_battle_#{@battle_snapshots}.png")
+  end
+
+  # Runs from Graphics.update so that the bot keeps playing during the battle.
+  def self.drive_network
+    return unless @bot
+    @client.tick
+    link = @duel.take_start
+    start_bot_battle(link) if link
+    @bot_fiber.resume if @bot_fiber&.alive?
+  end
+
+  def self.start_bot_battle(link)
+    @bot_starts += 1
+    scene = BattleDeterminism::SilentScene.new
+    battle = Multiplayer::DuelRunner.build_battle(link, scene, BotChooser, -> { Fiber.yield })
+    Multiplayer::DuelRunner.isolate(battle)
+    @bot_fiber = Fiber.new do
+      begin
+        battle.pbStartBattle
+        battle.report_result
+      rescue Exception => e
+        report("bot battle error: #{e.class}: #{e.message} #{(e.backtrace || []).first(5)}")
+      end
+    end
   end
 
   def self.snapshot
@@ -87,13 +137,11 @@ module InteractionTest
   end
 
   def self.drive_bot
-    @client.tick
     map = $game_map.map_id
     state = Multiplayer::Presence::State.new(map, $game_player.x + 1, $game_player.y, 4, 3)
     @presence.publish(state, BOT_APPEARANCE, [map])
     invitation = @duel.take_invitation
     @duel.respond(invitation, true) if invitation
-    @bot_starts += 1 if @duel.take_start
     @duel.take_notice
   end
 
@@ -110,7 +158,7 @@ module InteractionTest
   end
 
   def self.finished_duels
-    @messages.count { |message, _commands| message == "The duel is over." }
+    @messages.count { |message, _commands| message =~ /\AYou won|\AYou lost|without a winner/ }
   end
 
   def self.bot_challenges_player
@@ -189,7 +237,10 @@ class Scene_Intro
     pbChangePlayer(0)
     $game_player.moveto(*InteractionTest.open_spot)
     $game_player.refresh
-    $Trainer.party = [Pokemon.new(:PIKACHU, 20), Pokemon.new(:CHARMANDER, 20)]
+    pikachu = Pokemon.new(:PIKACHU, 20)
+    pikachu.moves.clear
+    pikachu.learn_move(:THUNDERBOLT)
+    $Trainer.party = [pikachu]
   end
 end
 

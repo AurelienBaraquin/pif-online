@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs an engine test on Windows from WSL against a locally built server.
-# usage: run.sh client|game|battle|codec|interaction <game-directory> <windows-staging-directory>
+# usage: run.sh client|game|battle|codec|interaction|network <game-directory> <windows-staging-directory>
 set -euo pipefail
 
 mode=$1
@@ -8,7 +8,7 @@ game=$2
 stage=$3
 root=$(cd "$(dirname "$0")/../.." && pwd)
 overlay="$root/client/998_Multiplayer"
-timeout_ms=180000
+timeout_ms=280000
 
 mapfile -t overlay_core < <(find "$overlay/core" "$overlay/features" -name '*.rb' | sort)
 
@@ -52,7 +52,11 @@ prepare_battle() {
 # The codec test reuses the duel harness of the determinism test and replaces
 # its entry point, so it must load second.
 prepare_interaction() {
-  stage_game_with_test interaction_test.rb
+  stage_game_with_test battle_determinism_test.rb interaction_test.rb
+}
+
+prepare_network() {
+  stage_game_with_test battle_determinism_test.rb network_duel_test.rb
 }
 
 prepare_codec() {
@@ -60,6 +64,8 @@ prepare_codec() {
 }
 
 "prepare_$mode"
+# The game executes every file under Data/Scripts, and tool hooks leave folders there.
+find "$stage" -name .claude-flow -type d -prune -exec rm -r {} +
 rm -f "$stage/test_result.txt" "$stage/multiplayer.log"
 
 server_binary=$(mktemp)

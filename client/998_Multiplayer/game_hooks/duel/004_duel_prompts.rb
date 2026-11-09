@@ -45,12 +45,10 @@ module Multiplayer
                              invitation.name, RulesMenu.summary(invitation.rules)))
     end
 
-    # The network battle is not implemented yet: both players are told so and
-    # the duel is closed cleanly on the server.
     def self.begin_duel(duel)
-      return false unless duel.take_start
-      pbMessage(_INTL("Both players are ready, but network battles are not available yet."))
-      duel.forfeit
+      link = duel.take_start
+      return false unless link
+      DuelRunner.run(link)
       true
     end
   end

@@ -1,5 +1,6 @@
-# Connects the overlay to the game. This file and the classes in this folder are
-# the only code that depends on the game's internals.
+# Connects the overlay to the game. Everything under game_hooks is the only code
+# that depends on the game's internals. The loader runs a folder's files before
+# its subfolders, so this folder's name must sort after all the others.
 module Multiplayer
   module Install
     TICK_SITE = "runtime.tick"
@@ -76,6 +77,9 @@ module Multiplayer
       end
       hook_graphics_update
       hook_scene_update
+      DuelRandom.install
+      PokeBattle_Battler.prepend(DuelRandom::SeededSuccessCheck)
+      DuelRunner.install_error_passthrough
       Events.onAction += proc { |_sender, _e| on_action }
       Events.onMapUpdate += proc { |_sender, _e| on_map_update }
       Events.onSpritesetCreate += proc do |_sender, e|

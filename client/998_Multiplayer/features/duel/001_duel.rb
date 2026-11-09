@@ -14,6 +14,7 @@ module Multiplayer
     FEATURE_NAME = :duel
     NOTICE_DECLINED = :declined
     NOTICE_ENDED = :ended
+    REASON_CONNECTION_LOST = "connection_lost"
 
     # party_source responds to for_rules(rules) and returns the encoded party.
     def initialize(client, party_source)
@@ -24,12 +25,14 @@ module Multiplayer
       client.on("duel_invited") { |data| receive_invitation(data) }
       client.on("duel_declined") { |data| finish_flow(Notice.new(NOTICE_DECLINED, data["reason"], nil)) }
       client.on("duel_accepted") { |_data| send_party }
-      client.on("duel_start") { |data| @start = data }
-      client.on("duel_ended") { |data| finish_flow(Notice.new(NOTICE_ENDED, data["reason"], data["winner"])) }
+      client.on("duel_start") { |data| begin_duel(data) }
+      client.on("duel_turn") { |data| @link&.receive_turn(data) }
+      client.on("duel_replaced") { |data| @link&.receive_replacement(data) }
+      client.on("duel_ended") { |data| end_duel(data) }
     end
 
     def idle?
-      @rules.nil? && @invitation.nil?
+      @rules.nil? && @invitation.nil? && @link.nil?
     end
 
     def challenge(target_id, rules)
@@ -58,15 +61,11 @@ module Multiplayer
       @notices.shift
     end
 
-    # Returns the server's duel_start payload, once.
+    # Returns the DuelLink of a duel that just started, once.
     def take_start
-      start = @start
-      @start = nil
+      start = @link_to_start
+      @link_to_start = nil
       start
-    end
-
-    def forfeit
-      @client.deliver("duel_forfeit", nil)
     end
 
     private
@@ -75,7 +74,9 @@ module Multiplayer
       @rules = nil
       @invitation = nil
       @invitation_shown = false
-      @start = nil
+      @link&.finish({ "winner" => nil, "reason" => REASON_CONNECTION_LOST })
+      @link = nil
+      @link_to_start = nil
       @notices = []
     end
 
@@ -91,11 +92,27 @@ module Multiplayer
       @client.deliver("duel_party", { "party" => @party_source.for_rules(@rules) })
     end
 
+    def begin_duel(data)
+      @link = DuelLink.new(@client, data)
+      @link_to_start = @link
+    end
+
+    # A duel's outcome goes to its battle; only a duel that never reached the
+    # battle needs a notice.
+    def end_duel(data)
+      link = @link
+      if link
+        link.finish(data)
+        @link = nil
+      end
+      finish_flow(Notice.new(NOTICE_ENDED, data["reason"], data["winner"])) unless link
+      @rules = nil
+    end
+
     def finish_flow(notice)
       @rules = nil
       @invitation = nil
       @invitation_shown = false
-      @start = nil
       @notices = @notices + [notice]
     end
   end

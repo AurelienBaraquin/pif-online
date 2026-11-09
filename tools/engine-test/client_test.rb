@@ -128,14 +128,13 @@ def run_duel_checks
     blue_start ||= blue.duel.take_start
     red_start && blue_start
   end
-  raise "different seeds" unless red_start["seed"] == blue_start["seed"]
-  raise "wrong sides" unless [red_start["side"].to_i, blue_start["side"].to_i] == [0, 1]
-  raise "different parties" unless red_start["parties"] == blue_start["parties"]
+  raise "different seeds" unless red_start.seed == blue_start.seed
+  raise "wrong sides" unless [red_start.side, blue_start.side] == [0, 1]
+  raise "different parties" unless red_start.parties == blue_start.parties
 
-  red.duel.forfeit
-  ended = nil
-  wait_for("a forfeit ends the duel for the opponent", peers) { ended = blue.duel.take_notice }
-  raise "wrong end: #{ended.to_a}" unless ended.kind == Multiplayer::Duel::NOTICE_ENDED && ended.reason == "forfeit"
+  red_start.forfeit
+  wait_for("a forfeit ends the duel for the opponent", peers) { blue_start.ending }
+  raise "wrong end: #{blue_start.ending.to_a}" unless blue_start.ending.to_a == [1, "forfeit"]
   peers.each { |peer| peer.client.stop }
 end
 

@@ -8,9 +8,11 @@ module Multiplayer
       "Spriteset_Map" => %i[addUserSprite map],
       "AnimatedBitmap" => %i[bitmap bitmap=],
       "Scene_Map" => %i[update],
+      "PokeBattle_Battle" => %i[pbCommandPhaseLoop pbSwitchInBetween pbGetReplacementPokemonIndex pbCanShowCommands? pbAbort],
+      "PokeBattle_Battler" => %i[pbSuccessCheckPerHit],
       "Trainer" => %i[able_party]
     }.freeze
-    REQUIRED_GLOBAL_METHODS = %i[getBaseOverworldSpriteFilename generateClothedBitmapStatic pbFacingTile pbMessage pbConfirmMessage pbMapInterpreterRunning?].freeze
+    REQUIRED_GLOBAL_METHODS = %i[getBaseOverworldSpriteFilename generateClothedBitmapStatic pbFacingTile pbMessage pbConfirmMessage pbMapInterpreterRunning? pbPrepareBattle pbBattleAnimation pbSceneStandby pbGetTrainerBattleBGM].freeze
 
     def self.violations
       missing = REQUIRED_INSTANCE_METHODS.flat_map do |class_name, methods|
