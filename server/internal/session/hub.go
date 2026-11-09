@@ -18,6 +18,7 @@ const (
 	eventQueueSize = 1024
 	minAcceptDelay = 10 * time.Millisecond
 	maxAcceptDelay = time.Second
+	tickInterval   = time.Second
 )
 
 // Handler processes one message. An error disconnects the sender.
@@ -31,12 +32,40 @@ type Feature interface {
 	SessionEnded(s *Session)
 }
 
+// Ticker is an optional extension of Feature for time-driven behaviour. Tick
+// runs on the hub goroutine at the pace of the configured Clock.
+type Ticker interface {
+	Tick(now time.Time)
+}
+
+// Clock tells the time and paces the hub's ticks.
+type Clock interface {
+	Now() time.Time
+	// Ticks returns the tick channel and the function that releases it.
+	Ticks() (ticks <-chan time.Time, stop func())
+}
+
+// SystemClock is the wall clock, ticking every Interval.
+type SystemClock struct {
+	Interval time.Duration
+}
+
+// Now implements Clock.
+func (c SystemClock) Now() time.Time { return time.Now() }
+
+// Ticks implements Clock.
+func (c SystemClock) Ticks() (<-chan time.Time, func()) {
+	ticker := time.NewTicker(c.Interval)
+	return ticker.C, ticker.Stop
+}
+
 // Config sets the hub's limits.
 type Config struct {
 	MaxSessions       int
 	IdleTimeout       time.Duration
 	MessagesPerSecond float64
 	MessageBurst      float64
+	Clock             Clock
 }
 
 // DefaultConfig returns the limits used in production.
@@ -46,6 +75,7 @@ func DefaultConfig() Config {
 		IdleTimeout:       15 * time.Second,
 		MessagesPerSecond: 60,
 		MessageBurst:      120,
+		Clock:             SystemClock{Interval: tickInterval},
 	}
 }
 
@@ -67,6 +97,7 @@ type event struct {
 type Hub struct {
 	config   Config
 	features []Feature
+	tickers  []Ticker
 	handlers map[string]Handler
 	sessions map[*Session]struct{}
 	events   chan event
@@ -77,7 +108,11 @@ type Hub struct {
 // is a programming error and panics at startup.
 func NewHub(config Config, features ...Feature) *Hub {
 	handlers := make(map[string]Handler)
+	var tickers []Ticker
 	for _, feature := range features {
+		if ticker, ticks := feature.(Ticker); ticks {
+			tickers = append(tickers, ticker)
+		}
 		for msgType, handler := range feature.Handlers() {
 			if _, duplicate := handlers[msgType]; duplicate {
 				panic(fmt.Sprintf("duplicate handler for message type %q", msgType))
@@ -88,6 +123,7 @@ func NewHub(config Config, features ...Feature) *Hub {
 	return &Hub{
 		config:   config,
 		features: features,
+		tickers:  tickers,
 		handlers: handlers,
 		sessions: make(map[*Session]struct{}),
 		events:   make(chan event, eventQueueSize),
@@ -185,12 +221,18 @@ func (h *Hub) publish(ctx context.Context, e event) bool {
 }
 
 func (h *Hub) run(ctx context.Context) {
+	ticks, stop := h.config.Clock.Ticks()
+	defer stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case e := <-h.events:
 			h.handle(e)
+		case now := <-ticks:
+			for _, ticker := range h.tickers {
+				ticker.Tick(now)
+			}
 		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/AurelienBaraquin/pif-online/server/internal/feature/duel"
 	"github.com/AurelienBaraquin/pif-online/server/internal/feature/presence"
 	"github.com/AurelienBaraquin/pif-online/server/internal/session"
 )
@@ -27,7 +28,8 @@ func main() {
 	}
 	log.Printf("listening on %s", listener.Addr())
 
-	hub := session.NewHub(session.DefaultConfig(), presence.New())
+	config := session.DefaultConfig()
+	hub := session.NewHub(config, presence.New(), duel.New(config.Clock.Now))
 	hub.Serve(ctx, listener)
 	log.Print("stopped")
 }

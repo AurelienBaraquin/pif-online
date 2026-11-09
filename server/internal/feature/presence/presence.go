@@ -3,7 +3,6 @@ package presence
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/AurelienBaraquin/pif-online/server/internal/protocol"
 	"github.com/AurelienBaraquin/pif-online/server/internal/room"
@@ -72,7 +71,7 @@ func (f *Feature) SessionEnded(s *session.Session) {
 
 func (f *Feature) handleMove(sender *session.Session, data json.RawMessage) error {
 	var state protocol.State
-	if err := decode(data, &state); err != nil {
+	if err := protocol.Decode(data, &state); err != nil {
 		return err
 	}
 	if err := state.Validate(); err != nil {
@@ -95,7 +94,7 @@ func (f *Feature) handleMove(sender *session.Session, data json.RawMessage) erro
 
 func (f *Feature) handleAppearance(sender *session.Session, data json.RawMessage) error {
 	var appearance protocol.Appearance
-	if err := decode(data, &appearance); err != nil {
+	if err := protocol.Decode(data, &appearance); err != nil {
 		return err
 	}
 	if err := appearance.Validate(); err != nil {
@@ -114,7 +113,7 @@ func (f *Feature) handleAppearance(sender *session.Session, data json.RawMessage
 
 func (f *Feature) handleInterest(sender *session.Session, data json.RawMessage) error {
 	var interest protocol.Interest
-	if err := decode(data, &interest); err != nil {
+	if err := protocol.Decode(data, &interest); err != nil {
 		return err
 	}
 	if err := interest.Validate(); err != nil {
@@ -167,11 +166,4 @@ func canSee(viewer, subject *player) bool {
 	}
 	_, interested := viewer.interest[subject.state.Map]
 	return interested
-}
-
-func decode(data json.RawMessage, target interface{}) error {
-	if err := json.Unmarshal(data, target); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	return nil
 }

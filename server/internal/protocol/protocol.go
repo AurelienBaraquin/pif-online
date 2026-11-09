@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
 // Version must match PROTOCOL_VERSION in the client's core/001_config.rb.
-const Version = 1
+const Version = 2
 
 // MaxFrameBytes is the largest accepted line, excluding its newline.
 const MaxFrameBytes = 16 * 1024
@@ -72,14 +70,8 @@ type Hello struct {
 
 // Validate checks the content of a Hello, except its version.
 func (h Hello) Validate() error {
-	count := utf8.RuneCountInString(h.Name)
-	if !utf8.ValidString(h.Name) || count < 1 || count > maxNameRunes {
-		return fmt.Errorf("%w: name length", ErrInvalid)
-	}
-	for _, r := range h.Name {
-		if unicode.IsControl(r) {
-			return fmt.Errorf("%w: name character", ErrInvalid)
-		}
+	if !validDisplayName(h.Name, maxNameRunes) {
+		return fmt.Errorf("%w: name", ErrInvalid)
 	}
 	return nil
 }

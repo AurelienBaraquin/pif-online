@@ -278,7 +278,7 @@ func TestHandshakeFailures(t *testing.T) {
 		{"not json", `not json`, protocol.CodeBadMessage},
 		{"message before hello", `{"t":"move","d":{}}`, protocol.CodeBadMessage},
 		{"hello without payload", `{"t":"hello"}`, protocol.CodeBadMessage},
-		{"invalid name", `{"t":"hello","d":{"v":1,"name":""}}`, protocol.CodeBadMessage},
+		{"invalid name", fmt.Sprintf(`{"t":"hello","d":{"v":%d,"name":""}}`, protocol.Version), protocol.CodeBadMessage},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
