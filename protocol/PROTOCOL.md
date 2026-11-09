@@ -1,6 +1,6 @@
 # PIF Online protocol
 
-Version: **2**
+Version: **3**
 
 The client and the server exchange UTF-8 JSON objects over TCP, one object per
 line (`\n`). A line never exceeds 16 KiB. Each object has a type `t` and an
@@ -56,6 +56,7 @@ false every `item` must be null; if `level` is set every Pokémon must have it.
 | `duel_hash` | `round`, `hash` (1-64 characters) | State hash after a resolved round |
 | `duel_result` | `winner` (0, 1 or null) | The outcome this client simulated |
 | `duel_forfeit` | none | Gives up the duel |
+| `duel_replacing` | none | The sender must pick a replacement before the duel can go on |
 
 ## Server to client
 
@@ -96,10 +97,13 @@ seconds of `duel_accepted`. `duel_start` is sent once both parties are valid.
 Round numbers start at 1. Each round has a `turn_seconds` timer, restarted by
 every `duel_turn` and `duel_replaced`. When it runs out the player who has
 neither chosen nor sent `duel_result` loses by `timeout`; if both are missing
-there is no winner. `duel_choice` must name the current round, once per player.
+there is no winner. A side that sent `duel_replacing` and has not yet sent its
+`duel_replacement` loses by `timeout` when the other side has not done the same;
+this is an admission a client can only make against itself, so the server
+trusts it. `duel_choice` must name the current round, once per player.
 `index` is a move slot (0-3) or a party slot (below `party_size`).
 
-`duel_replacement` is only valid after round 1 resolved. `seq` starts at 0 or
+`duel_replacing` and `duel_replacement` are only valid after round 1 resolved. `seq` starts at 0 or
 more and must grow per side, gaps being allowed; at most 8 per side per round.
 
 `duel_hash` is sent for each resolved round, in order. Hashes are compared per

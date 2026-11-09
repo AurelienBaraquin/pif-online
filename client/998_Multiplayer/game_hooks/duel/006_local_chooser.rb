@@ -7,18 +7,20 @@ module Multiplayer
     COMMAND_RUN = 3
 
     def self.choose(battle, index)
-      loop do
-        case battle.pbCommandMenu(index, true)
-        when COMMAND_FIGHT then return take_choice(battle, index) if battle.pbFightMenu(index)
-        when COMMAND_BAG then battle.pbDisplayPaused(_INTL("Items can't be used in a duel."))
-        when COMMAND_POKEMON then return take_choice(battle, index) if battle.pbPartyMenu(index)
-        when COMMAND_RUN then return nil if battle.pbDisplayConfirm(_INTL("Forfeit the duel?"))
+      battle.scene.with_turn_timer do
+        loop do
+          case battle.pbCommandMenu(index, true)
+          when COMMAND_FIGHT then return take_choice(battle, index) if battle.pbFightMenu(index)
+          when COMMAND_BAG then battle.pbDisplayPaused(_INTL("Items can't be used in a duel."))
+          when COMMAND_POKEMON then return take_choice(battle, index) if battle.pbPartyMenu(index)
+          when COMMAND_RUN then return nil if battle.pbDisplayConfirm(_INTL("Forfeit the duel?"))
+          end
         end
       end
     end
 
     def self.replacement(battle, index)
-      battle.pbPartyScreen(index, false, false)
+      battle.scene.with_turn_timer { battle.pbPartyScreen(index, false, false) }
     end
 
     # The menus register the choice directly. It is read back and cleared, to be

@@ -18,6 +18,7 @@ module Multiplayer
       @replacements = { 0 => [], 1 => [] }
       @next_seq = 0
       @ending = nil
+      restart_turn_clock
     end
 
     def send_choice(round, choice)
@@ -27,6 +28,12 @@ module Multiplayer
     def send_replacement(index)
       @client.deliver("duel_replacement", { "seq" => @next_seq, "index" => index })
       @next_seq += 1
+    end
+
+    # Admits that this side must pick a replacement, so that the server blames
+    # it if the timer runs out meanwhile.
+    def send_replacing
+      @client.deliver("duel_replacing", nil)
     end
 
     def send_hash(round, hash)
@@ -51,12 +58,19 @@ module Multiplayer
       @replacements[side].shift
     end
 
+    # Whole seconds left on the server's turn timer, for display only.
+    def seconds_left
+      [(@turn_deadline - now).ceil, 0].max
+    end
+
     def receive_turn(data)
       @turns[data["round"].to_i] = data["choices"].map { |choice| parse_choice(choice) }
+      restart_turn_clock
     end
 
     def receive_replacement(data)
       @replacements[data["side"].to_i] << data["index"].to_i
+      restart_turn_clock
     end
 
     def finish(data)
@@ -65,6 +79,14 @@ module Multiplayer
     end
 
     private
+
+    def restart_turn_clock
+      @turn_deadline = now + @rules["turn_seconds"].to_i
+    end
+
+    def now
+      Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    end
 
     def parse_choice(data)
       Choice.new(data["action"], data["index"].to_i)

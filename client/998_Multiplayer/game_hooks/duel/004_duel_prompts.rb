@@ -15,7 +15,7 @@ module Multiplayer
     end
 
     def self.can_prompt?
-      $scene.is_a?(Scene_Map) && !$game_temp.message_window_showing && !$game_temp.in_menu &&
+      $scene.is_a?(Scene_Map) && !DuelRunner.running && !$game_temp.message_window_showing && !$game_temp.in_menu &&
         !$game_temp.in_battle && !$game_temp.player_transferring &&
         !pbMapInterpreterRunning? && !$game_player.moving?
     end
@@ -28,6 +28,7 @@ module Multiplayer
     end
 
     def self.notice_text(notice)
+      return DuelRunner.outcome_text(notice.link, notice.link.ending) if notice.link
       return _INTL("The duel is over.") if notice.kind == Duel::NOTICE_ENDED
       _INTL(DECLINE_MESSAGES.fetch(notice.reason, "The challenge was cancelled."))
     end

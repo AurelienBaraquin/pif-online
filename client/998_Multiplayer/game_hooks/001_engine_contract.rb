@@ -8,8 +8,14 @@ module Multiplayer
       "Spriteset_Map" => %i[addUserSprite map],
       "AnimatedBitmap" => %i[bitmap bitmap=],
       "Scene_Map" => %i[update],
-      "PokeBattle_Battle" => %i[pbCommandPhaseLoop pbSwitchInBetween pbGetReplacementPokemonIndex pbCanShowCommands? pbAbort],
-      "PokeBattle_Battler" => %i[pbSuccessCheckPerHit],
+      "PokeBattle_Battle" => %i[pbCommandPhaseLoop pbSwitchInBetween pbGetReplacementPokemonIndex pbCanShowCommands? pbAbort pbOwnedByPlayer? pbThisEx pbMessageOnRecall pbMessagesOnReplace pbStartBattleSendOut pbEndOfBattle],
+      "PokeBattle_Scene" => %i[pbStartBattle pbEndBattle pbCreateBackdropSprites pbFindMoveAnimDetails pbShowAbilitySplash pbHideAbilitySplash pbShowPartyLineup],
+      "PokemonDataBox" => %i[battler=],
+      "PokemonBattlerSprite" => %i[pbSetPosition],
+      "GameData::Species" => %i[apply_metrics_to_sprite],
+      "PokemonParty_Scene" => %i[pbStartScene pbEndScene],
+      "PokemonSummary_Scene" => %i[pbStartScene pbEndScene],
+      "PokeBattle_Battler" => %i[pbSuccessCheckPerHit pbThis pbTeam pbOpposingTeam],
       "Trainer" => %i[able_party]
     }.freeze
     REQUIRED_GLOBAL_METHODS = %i[getBaseOverworldSpriteFilename generateClothedBitmapStatic pbFacingTile pbMessage pbConfirmMessage pbMapInterpreterRunning? pbPrepareBattle pbBattleAnimation pbSceneStandby pbGetTrainerBattleBGM].freeze

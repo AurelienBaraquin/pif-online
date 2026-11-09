@@ -19,6 +19,7 @@ const (
 	TypeDuelHash        = "duel_hash"
 	TypeDuelResult      = "duel_result"
 	TypeDuelForfeit     = "duel_forfeit"
+	TypeDuelReplacing   = "duel_replacing"
 
 	TypeDuelInvited  = "duel_invited"
 	TypeDuelDeclined = "duel_declined"

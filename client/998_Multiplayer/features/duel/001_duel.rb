@@ -9,7 +9,7 @@ module Multiplayer
       end
     end
     Invitation = Struct.new(:from, :name, :rules)
-    Notice = Struct.new(:kind, :reason, :winner)
+    Notice = Struct.new(:kind, :reason, :winner, :link)
 
     FEATURE_NAME = :duel
     NOTICE_DECLINED = :declined
@@ -75,9 +75,9 @@ module Multiplayer
       @invitation = nil
       @invitation_shown = false
       @link&.finish({ "winner" => nil, "reason" => REASON_CONNECTION_LOST })
+      @notices = @link_to_start ? [ended_notice(@link_to_start)] : []
       @link = nil
       @link_to_start = nil
-      @notices = []
     end
 
     def receive_invitation(data)
@@ -101,12 +101,16 @@ module Multiplayer
     # battle needs a notice.
     def end_duel(data)
       link = @link
-      if link
-        link.finish(data)
-        @link = nil
-      end
-      finish_flow(Notice.new(NOTICE_ENDED, data["reason"], data["winner"])) unless link
+      @link = nil
       @rules = nil
+      link&.finish(data)
+      return unless link.nil? || link.equal?(@link_to_start)
+      @link_to_start = nil
+      finish_flow(link ? ended_notice(link) : Notice.new(NOTICE_ENDED, data["reason"], data["winner"], nil))
+    end
+
+    def ended_notice(link)
+      Notice.new(NOTICE_ENDED, link.ending.reason, link.ending.winner, link)
     end
 
     def finish_flow(notice)

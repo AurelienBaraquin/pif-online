@@ -57,7 +57,6 @@ module NetworkDuelTest
       @link = link
       scene = BattleDeterminism::SilentScene.new
       @battle = Multiplayer::DuelRunner.build_battle(link, scene, chooser, -> { Fiber.yield })
-      Multiplayer::DuelRunner.isolate(@battle)
       @battle.debug = true
       @fiber = Fiber.new { play }
     end

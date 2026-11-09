@@ -29,6 +29,8 @@ type match struct {
 	choices      [2]*protocol.DuelAction
 	lastSeq      [2]int
 	replacements [2]int
+	// owesReplacement holds each side's own admission that it must replace.
+	owesReplacement [2]bool
 
 	hashed        [2]int
 	pendingHashes map[int]string
@@ -75,6 +77,7 @@ func (m *match) resolveRound() protocol.DuelTurn {
 	m.round++
 	m.choices = [2]*protocol.DuelAction{}
 	m.replacements = [2]int{}
+	m.owesReplacement = [2]bool{}
 	return turn
 }
 
@@ -104,8 +107,16 @@ func (m *match) hasActed(side int) bool {
 	return m.choices[side] != nil || m.reported[side]
 }
 
-// timeoutWinner returns the only side that acted, or nil when none or both did.
+// timeoutWinner returns the other side when exactly one side admitted owing a
+// replacement, else the only side that acted, or nil when none or both did.
 func (m *match) timeoutWinner() *int {
+	if m.owesReplacement[0] != m.owesReplacement[1] {
+		side := 0
+		if m.owesReplacement[0] {
+			side = 1
+		}
+		return &side
+	}
 	first, second := m.hasActed(0), m.hasActed(1)
 	if first == second {
 		return nil

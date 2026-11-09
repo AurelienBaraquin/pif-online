@@ -110,7 +110,6 @@ module InteractionTest
     @bot_starts += 1
     scene = BattleDeterminism::SilentScene.new
     battle = Multiplayer::DuelRunner.build_battle(link, scene, BotChooser, -> { Fiber.yield })
-    Multiplayer::DuelRunner.isolate(battle)
     @bot_fiber = Fiber.new do
       begin
         battle.pbStartBattle

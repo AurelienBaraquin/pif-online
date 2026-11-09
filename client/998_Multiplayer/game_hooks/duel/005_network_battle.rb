@@ -62,6 +62,7 @@ module Multiplayer
       round = @turnCount + 1
       @link.send_hash(round - 1, state_hash) if round > 1
       send_local_choice(round)
+      show_waiting unless @link.turn(round)
       choices = wait_for { @link.turn(round) }
       SIDES.each { |index| apply_choice(index, choices[index]) }
     end
@@ -104,8 +105,17 @@ module Multiplayer
     end
 
     def replacement(index)
-      @link.send_replacement(@chooser.replacement(self, index)) if index == @link.side
+      if index == @link.side
+        @link.send_replacing
+        @link.send_replacement(@chooser.replacement(self, index))
+      else
+        show_waiting
+      end
       wait_for { @link.next_replacement(index) }
+    end
+
+    def show_waiting
+      pbDisplayBrief(_INTL("Waiting for opponent..."))
     end
 
     def wait_for
@@ -117,11 +127,17 @@ module Multiplayer
       end
     end
 
+    def plain_value?(value)
+      value.nil? || value == true || value == false || value.is_a?(Integer) || value.is_a?(Symbol)
+    end
+
     # Only plain values: other objects would print their memory address.
     def state_hash
       fields = @battlers.compact.map do |battler|
         [battler.pokemon.species, battler.hp, battler.status, battler.statusCount, battler.item_id, battler.ability_id,
-         battler.moves.map(&:pp), battler.pokemonIndex, battler.stages.values]
+         battler.moves.map(&:pp), battler.pokemonIndex, battler.stages.values,
+         battler.attack, battler.defense, battler.spatk, battler.spdef, battler.speed,
+         battler.effects.select { |value| plain_value?(value) }]
       end
       Zlib.crc32([@turnCount, @field.weather, @field.terrain, fields].inspect).to_s
     end

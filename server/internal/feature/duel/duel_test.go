@@ -230,6 +230,72 @@ func TestReplacementIsForwardedAndRestartsTimer(t *testing.T) {
 	alice.expectEnded(protocol.EndTimeout, nil)
 }
 
+func TestStalledReplacementLosesOnlyAfterAdmission(t *testing.T) {
+	admit := func(c *testClient) { c.send(protocol.TypeDuelReplacing, nil) }
+	replace := func(c *testClient) {
+		c.send(protocol.TypeDuelReplacement, protocol.DuelReplacement{Seq: 0, Index: 0})
+	}
+	cases := []struct {
+		name     string
+		act      func(alice, bob *testClient)
+		replaced bool
+		winner   *int
+	}{
+		{"nobody admits", func(_, _ *testClient) {}, false, nil},
+		{"alice owes", func(alice, _ *testClient) { admit(alice) }, false, side(1)},
+		{"bob owes", func(_, bob *testClient) { admit(bob) }, false, side(0)},
+		{"both owe", func(alice, bob *testClient) { admit(alice); admit(bob) }, false, nil},
+		{"alice owed and replaced", func(alice, _ *testClient) { admit(alice); replace(alice) }, true, nil},
+		{"both owed, alice replaced", func(alice, bob *testClient) { admit(alice); admit(bob); replace(alice) }, true, side(0)},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			server := startServer(t)
+			alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+			begin(alice, bob)
+			playRound(alice, bob, 1)
+			tc.act(alice, bob)
+			clients := []*testClient{alice, bob}
+			for _, client := range clients {
+				if tc.replaced {
+					client.expect(protocol.TypeDuelReplaced, nil)
+				}
+				client.sync()
+			}
+
+			server.clock.advance(turn)
+
+			for _, client := range clients {
+				client.expectEnded(protocol.EndTimeout, tc.winner)
+			}
+		})
+	}
+}
+
+func TestAdmissionIsClearedByANewRound(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	begin(alice, bob)
+	playRound(alice, bob, 1)
+	alice.send(protocol.TypeDuelReplacing, nil)
+	alice.sync()
+	playRound(alice, bob, 2)
+
+	server.clock.advance(turn)
+
+	alice.expectEnded(protocol.EndTimeout, nil)
+	bob.expectEnded(protocol.EndTimeout, nil)
+}
+
+func TestReplacingBeforeFirstRoundIsRejected(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	begin(alice, bob)
+	alice.send(protocol.TypeDuelReplacing, nil)
+	alice.expectKicked()
+}
+
 func TestHashesCompareOncePerRound(t *testing.T) {
 	server := startServer(t)
 	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")

@@ -58,6 +58,7 @@ func (f *Feature) Handlers() map[string]session.Handler {
 		protocol.TypeDuelHash:        f.handleHash,
 		protocol.TypeDuelResult:      f.handleResult,
 		protocol.TypeDuelForfeit:     f.handleForfeit,
+		protocol.TypeDuelReplacing:   f.handleReplacing,
 	}
 }
 
@@ -308,6 +309,7 @@ func (f *Feature) handleReplacement(sender *session.Session, data json.RawMessag
 		return fmt.Errorf("%w: replacement seq %d", errWrongState, replacement.Seq)
 	}
 	m.lastSeq[side] = replacement.Seq
+	m.owesReplacement[side] = false
 	m.replacements[side]++
 	m.deadline = f.now().Add(m.turnDuration())
 	replaced := protocol.DuelReplaced{Side: side, Seq: replacement.Seq, Index: replacement.Index}
@@ -365,6 +367,21 @@ func (f *Feature) handleResult(sender *session.Session, data json.RawMessage) er
 	} else {
 		f.end(m, nil, protocol.EndDesync)
 	}
+	return nil
+}
+
+// handleReplacing records that the sender has to pick a replacement. Only a
+// client can know this, and it is trusted because it can only hurt its sender:
+// a side that admits owing a replacement loses if its timer runs out.
+func (f *Feature) handleReplacing(sender *session.Session, _ json.RawMessage) error {
+	m, err := f.matchInPhase(sender, phaseBattle)
+	if m == nil {
+		return err
+	}
+	if m.round < 2 {
+		return fmt.Errorf("%w: replacing in round %d", errWrongState, m.round)
+	}
+	m.owesReplacement[m.sideOf(sender.ID())] = true
 	return nil
 }
 

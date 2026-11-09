@@ -10,7 +10,7 @@ import (
 )
 
 // Version must match PROTOCOL_VERSION in the client's core/001_config.rb.
-const Version = 2
+const Version = 3
 
 // MaxFrameBytes is the largest accepted line, excluding its newline.
 const MaxFrameBytes = 16 * 1024
