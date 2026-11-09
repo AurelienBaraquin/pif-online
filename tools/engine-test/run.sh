@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs an engine test on Windows from WSL against a locally built server.
-# usage: run.sh client|game|battle|codec <game-directory> <windows-staging-directory>
+# usage: run.sh client|game|battle|codec|interaction <game-directory> <windows-staging-directory>
 set -euo pipefail
 
 mode=$1
@@ -51,6 +51,10 @@ prepare_battle() {
 
 # The codec test reuses the duel harness of the determinism test and replaces
 # its entry point, so it must load second.
+prepare_interaction() {
+  stage_game_with_test interaction_test.rb
+}
+
 prepare_codec() {
   stage_game_with_test battle_determinism_test.rb party_codec_test.rb
 }

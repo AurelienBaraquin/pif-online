@@ -9,16 +9,32 @@ APPEARANCE = {
   "clothes_color" => 10, "hair_color" => 0, "hat_color" => 0, "hat2_color" => 0
 }.freeze
 
+POKEMON = {
+  "species" => "PIKACHU", "level" => 20, "form" => 0, "personal_id" => 1, "gender" => 0, "nature" => "HARDY",
+  "ability" => "STATIC", "ability_index" => 0, "item" => nil, "happiness" => 70, "iv" => [1, 2, 3, 4, 5, 6],
+  "iv_maxed" => [false] * 6, "ev" => [0] * 6, "moves" => [{ "id" => "TACKLE", "pp" => 35, "ppup" => 0 }],
+  "name" => "Pika", "shiny" => false, "head_shiny" => false, "body_shiny" => false,
+  "hidden_power_type" => nil, "size_category" => nil, "pif_sprite" => nil
+}.freeze
+RULES = Multiplayer::Duel::Rules.new(1, 0, false, 60)
+
+module StubPartySource
+  def self.for_rules(_rules)
+    [POKEMON]
+  end
+end
+
 def report(line)
   File.open(RESULT_FILE, "a") { |file| file.puts(line) }
 end
 
 class TestPeer
-  attr_reader :client, :presence
+  attr_reader :client, :presence, :duel
 
   def initialize(name)
     @client = Multiplayer::Client.new(ADDRESS, name)
     @presence = Multiplayer::Presence.new(@client)
+    @duel = Multiplayer::Duel.new(@client, StubPartySource)
     @client.start
   end
 
@@ -85,12 +101,51 @@ def run_session_checks
   bob.client.stop
 end
 
+def run_duel_checks
+  red = TestPeer.new("Red")
+  blue = TestPeer.new("Blue")
+  peers = [red, blue]
+  wait_for("duel clients receive welcome", peers) { red.client.ready? && blue.client.ready? }
+
+  raise "challenge refused locally" unless red.duel.challenge(blue.client.player_id, RULES)
+  raise "second challenge accepted" if red.duel.challenge(blue.client.player_id, RULES)
+  invitation = nil
+  wait_for("the target receives the invitation", peers) { invitation = blue.duel.take_invitation }
+  raise "wrong invitation: #{invitation.to_a}" unless invitation.name == "Red" && invitation.rules == RULES
+  raise "invitation shown twice" if blue.duel.take_invitation
+  blue.duel.respond(invitation, false)
+  notice = nil
+  wait_for("a refusal reaches the challenger", peers) { notice = red.duel.take_notice }
+  raise "wrong notice: #{notice.to_a}" unless notice.reason == "refused"
+  raise "challenger not idle" unless red.duel.idle?
+
+  red.duel.challenge(blue.client.player_id, RULES)
+  wait_for("a second invitation arrives", peers) { invitation = blue.duel.take_invitation }
+  blue.duel.respond(invitation, true)
+  red_start = blue_start = nil
+  wait_for("an accepted duel starts on both clients", peers) do
+    red_start ||= red.duel.take_start
+    blue_start ||= blue.duel.take_start
+    red_start && blue_start
+  end
+  raise "different seeds" unless red_start["seed"] == blue_start["seed"]
+  raise "wrong sides" unless [red_start["side"].to_i, blue_start["side"].to_i] == [0, 1]
+  raise "different parties" unless red_start["parties"] == blue_start["parties"]
+
+  red.duel.forfeit
+  ended = nil
+  wait_for("a forfeit ends the duel for the opponent", peers) { ended = blue.duel.take_notice }
+  raise "wrong end: #{ended.to_a}" unless ended.kind == Multiplayer::Duel::NOTICE_ENDED && ended.reason == "forfeit"
+  peers.each { |peer| peer.client.stop }
+end
+
 begin
   File.delete(RESULT_FILE) if File.exist?(RESULT_FILE)
   report("MKXPError ancestors: #{defined?(MKXPError) ? MKXPError.ancestors.first(3) : "undefined"}")
   run_settings_checks
   run_guard_checks
   run_session_checks
+  run_duel_checks
   report("PASS")
 rescue Exception => e
   report("FAIL #{e.class}: #{e.message}\n#{(e.backtrace || []).first(6).join("\n")}")

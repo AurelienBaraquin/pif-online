@@ -4,6 +4,8 @@ module Multiplayer
   module Install
     TICK_SITE = "runtime.tick"
     PUBLISH_SITE = "presence.publish"
+    INTERACTION_SITE = "interaction.menu"
+    PROMPTS_SITE = "duel.prompts"
     @config_loaded = false
     @config = nil
 
@@ -20,6 +22,16 @@ module Multiplayer
         presence = Runtime.feature(Presence::FEATURE_NAME)
         presence&.publish(LocalPlayer.state, LocalPlayer.appearance, LocalPlayer.interest)
       end
+    end
+
+    def self.on_action
+      Guard.run(INTERACTION_SITE) { InteractionMenu.open_if_facing_player }
+    end
+
+    # Runs after Scene_Map#update rather than from Events.onMapUpdate, which
+    # fires inside the map's own update: a message opened there would re-enter it.
+    def self.after_scene_update
+      Guard.run(PROMPTS_SITE) { DuelPrompts.update }
     end
 
     def self.ensure_started
@@ -45,6 +57,17 @@ module Multiplayer
       end
     end
 
+    def self.hook_scene_update
+      Scene_Map.class_eval do
+        alias_method :multiplayer_original_update, :update
+
+        def update
+          multiplayer_original_update
+          Multiplayer::Install.after_scene_update
+        end
+      end
+    end
+
     def self.apply
       violations = EngineContract.violations
       unless violations.empty?
@@ -52,6 +75,8 @@ module Multiplayer
         return
       end
       hook_graphics_update
+      hook_scene_update
+      Events.onAction += proc { |_sender, _e| on_action }
       Events.onMapUpdate += proc { |_sender, _e| on_map_update }
       Events.onSpritesetCreate += proc do |_sender, e|
         spriteset, viewport = e

@@ -6,9 +6,11 @@ module Multiplayer
       "Game_Character" => %i[moveto update_pattern calculate_bush_depth screen_x screen_y screen_z],
       "Sprite_Character" => %i[update dispose updateCharacterBitmap checkModifySpriteGraphics make_shadow],
       "Spriteset_Map" => %i[addUserSprite map],
-      "AnimatedBitmap" => %i[bitmap bitmap=]
+      "AnimatedBitmap" => %i[bitmap bitmap=],
+      "Scene_Map" => %i[update],
+      "Trainer" => %i[able_party]
     }.freeze
-    REQUIRED_GLOBAL_METHODS = %i[getBaseOverworldSpriteFilename generateClothedBitmapStatic].freeze
+    REQUIRED_GLOBAL_METHODS = %i[getBaseOverworldSpriteFilename generateClothedBitmapStatic pbFacingTile pbMessage pbConfirmMessage pbMapInterpreterRunning?].freeze
 
     def self.violations
       missing = REQUIRED_INSTANCE_METHODS.flat_map do |class_name, methods|
