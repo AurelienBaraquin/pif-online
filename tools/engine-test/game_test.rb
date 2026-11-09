@@ -8,7 +8,7 @@ module GameTest
   SETTLE_FRAMES = 120
   ADDRESS = Multiplayer::Config.new("127.0.0.1", 7777)
   BOT_APPEARANCE = {
-    "skin" => 3, "clothes" => "red", "hair" => "1_painter", "hat" => nil, "hat2" => nil,
+    "skin" => 3, "clothes" => "basicnormal", "hair" => "1_afro", "hat" => nil, "hat2" => nil,
     "clothes_color" => 0, "hair_color" => 0, "hat_color" => 0, "hat2_color" => 0
   }.freeze
 
@@ -40,7 +40,7 @@ module GameTest
 
   def self.publish_bot
     map = $game_map.map_id
-    offset = (@frame / 40).even? ? 1 : 2
+    offset = (@frame / 40).even? ? 2 : 3
     state = Multiplayer::Presence::State.new(map, $game_player.x + offset, $game_player.y, 6, 3)
     @bot.publish(state, BOT_APPEARANCE, [map])
   end
@@ -84,8 +84,22 @@ class Scene_Intro
     Game.start_new
     map_id, = load_data("Data/MapInfos.rxdata").find { |_id, info| info.name =~ OUTDOOR_MAP_NAME }
     $MapFactory.setup(map_id)
-    $game_player.moveto($game_map.width / 2, $game_map.height / 2)
+    pbChangePlayer(0)
+    $game_player.moveto(*open_spot)
     $game_player.refresh
+  end
+
+  # Finds a tile with enough free ground around it for both characters, so that
+  # no building or tree can hide part of a sprite.
+  def open_spot
+    tiles = (0...$game_map.width).to_a.product((0...$game_map.height).to_a)
+    tiles.find { |x, y| area_free?(x, y) } || [$game_map.width / 2, $game_map.height / 2]
+  end
+
+  def area_free?(x, y)
+    (-1..4).to_a.product((-3..1).to_a).all? do |dx, dy|
+      [2, 4, 6, 8].all? { |dir| $game_map.passable?(x + dx, y + dy, dir) }
+    end
   end
 end
 
