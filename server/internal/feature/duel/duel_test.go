@@ -81,6 +81,14 @@ func TestPartiesOmitUnknownFields(t *testing.T) {
 	}
 }
 
+func TestChallengeBetweenGameBuildsIsDeclined(t *testing.T) {
+	server := startServer(t)
+	alice, bob := joinWithGame(t, server, "Alice", "aaaa"), joinWithGame(t, server, "Bob", "bbbb")
+
+	alice.send(protocol.TypeDuelChallenge, protocol.DuelChallenge{Target: bob.id, Rules: testRules})
+	alice.expectDeclined(bob.id, protocol.DeclineGame)
+}
+
 func TestDeclines(t *testing.T) {
 	server := startServer(t)
 	alice, bob, carol := join(t, server, "Alice"), join(t, server, "Bob"), join(t, server, "Carol")

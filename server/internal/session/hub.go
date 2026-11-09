@@ -301,12 +301,13 @@ func (h *Hub) handshake(s *Session, envelope protocol.Envelope) {
 		return
 	}
 	if hello.Validate() != nil {
-		s.kick(protocol.CodeBadMessage, "Invalid player name.")
+		s.kick(protocol.CodeBadMessage, "Invalid hello.")
 		return
 	}
 	h.nextID++
 	s.id = h.nextID
 	s.name = hello.Name
+	s.game = hello.Game
 	s.started = true
 	s.Send(protocol.TypeWelcome, protocol.Welcome{ID: uint32(s.id)})
 	for _, feature := range h.features {

@@ -1,6 +1,6 @@
 # PIF Online protocol
 
-Version: **5**
+Version: **6**
 
 The client and the server exchange UTF-8 JSON objects over TCP, one object per
 line (`\n`). A line never exceeds 16 KiB. Each object has a type `t` and an
@@ -53,7 +53,7 @@ Clause ids: `sleep`, `freeze`, `ohko`, `evasion`, `perish`, `skill_swap`,
 
 | Type | Payload | Meaning |
 |---|---|---|
-| `hello` | `v`, `name` (1-32 characters, no control character) | Opens the session |
+| `hello` | `v`, `name` (1-32 characters, no control character), `game` (1-16 lowercase hex characters) | Opens the session |
 | `ping` | none | Keeps the connection alive |
 | `move` | `state` | Reports the local player's position |
 | `appearance` | `appearance` | Reports the local player's look |
@@ -103,7 +103,8 @@ order and identical for both clients. A `duel_party` without `appearance` draws
 that player with an empty `appearance`.
 
 A player is in at most one challenge or duel. `duel_declined` reasons are
-`refused`, `busy`, `offline` and `expired`; its `target` is always the other
+`refused`, `busy`, `offline`, `expired` and `game_version` (the players' `game`
+fingerprints differ, so their simulations could not agree); its `target` is always the other
 player, and it is sent to both players when a challenge expires. An unanswered
 challenge expires after 30 seconds, and so do parties not received within 30
 seconds of `duel_accepted`. `duel_start` is sent once both parties are valid.

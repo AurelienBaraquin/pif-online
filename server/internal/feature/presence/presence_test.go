@@ -66,7 +66,7 @@ func dial(t *testing.T, server testServer) *testClient {
 func join(t *testing.T, server testServer, name string) *testClient {
 	t.Helper()
 	client := dial(t, server)
-	client.send(protocol.TypeHello, protocol.Hello{Version: protocol.Version, Name: name})
+	client.send(protocol.TypeHello, protocol.Hello{Version: protocol.Version, Name: name, Game: "ab12"})
 	var welcome protocol.Welcome
 	client.expect(protocol.TypeWelcome, &welcome)
 	client.id = welcome.ID
@@ -278,7 +278,8 @@ func TestHandshakeFailures(t *testing.T) {
 		{"not json", `not json`, protocol.CodeBadMessage},
 		{"message before hello", `{"t":"move","d":{}}`, protocol.CodeBadMessage},
 		{"hello without payload", `{"t":"hello"}`, protocol.CodeBadMessage},
-		{"invalid name", fmt.Sprintf(`{"t":"hello","d":{"v":%d,"name":""}}`, protocol.Version), protocol.CodeBadMessage},
+		{"invalid name", fmt.Sprintf(`{"t":"hello","d":{"v":%d,"name":"","game":"ab12"}}`, protocol.Version), protocol.CodeBadMessage},
+		{"missing game build", fmt.Sprintf(`{"t":"hello","d":{"v":%d,"name":"A"}}`, protocol.Version), protocol.CodeBadMessage},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -332,7 +333,7 @@ func TestFloodIsRateLimited(t *testing.T) {
 	config.MessageBurst = 2
 	server := startServer(t, config)
 	client := dial(t, server)
-	client.send(protocol.TypeHello, protocol.Hello{Version: protocol.Version, Name: "A"})
+	client.send(protocol.TypeHello, protocol.Hello{Version: protocol.Version, Name: "A", Game: "ab12"})
 	client.expect(protocol.TypeWelcome, nil)
 
 	client.send(protocol.TypePing, nil)

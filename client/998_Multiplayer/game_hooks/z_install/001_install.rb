@@ -7,8 +7,7 @@ module Multiplayer
     PUBLISH_SITE = "presence.publish"
     INTERACTION_SITE = "interaction.menu"
     PROMPTS_SITE = "duel.prompts"
-    @config_loaded = false
-    @config = nil
+    CONNECTION_PROMPTS_SITE = "connection.prompts"
 
     def self.tick
       Guard.run(TICK_SITE) do
@@ -34,15 +33,13 @@ module Multiplayer
     # fires inside the map's own update: a message opened there would re-enter it.
     def self.after_scene_update
       Guard.run(PROMPTS_SITE) { DuelPrompts.update }
+      Guard.run(CONNECTION_PROMPTS_SITE) { ConnectionPrompts.update }
     end
 
     def self.ensure_started
-      return if Runtime.running?
-      unless @config_loaded
-        @config = Settings.load
-        @config_loaded = true
-      end
-      Runtime.start(@config, LocalPlayer.name) if @config && $Trainer
+      return if Runtime.running? || !$Trainer
+      server = Settings.book.active
+      Runtime.start(server, LocalPlayer.name) if server
     end
 
     # Graphics outlives an F12 reload, unlike the script classes: aliasing it
@@ -70,10 +67,17 @@ module Multiplayer
       end
     end
 
+    def self.hook_pause_menu
+      return unless Object.const_defined?(:PokemonPauseMenu_Scene)
+      PokemonPauseMenu_Scene.prepend(MultiplayerMenu::PauseEntry)
+    end
+
     def self.apply
+      hook_pause_menu
       violations = EngineContract.violations
       unless violations.empty?
         Log.write("incompatible game version, overlay disabled: #{violations.join(", ")}")
+        MultiplayerMenu.mark_incompatible
         return
       end
       hook_graphics_update

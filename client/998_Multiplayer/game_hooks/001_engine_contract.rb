@@ -18,9 +18,10 @@ module Multiplayer
       "PokeBattle_Battler" => %i[pbSuccessCheckPerHit pbThis pbTeam pbOpposingTeam],
       "Trainer" => %i[able_party],
       "TrainerAppearance" => %i[clothes hair hat hat2 skin_color],
-      "IconSprite" => %i[setBitmapDirectly]
+      "IconSprite" => %i[setBitmapDirectly],
+      "PokemonPauseMenu_Scene" => %i[pbShowCommands pbShowMenu pbHideMenu]
     }.freeze
-    REQUIRED_GLOBAL_METHODS = %i[getBaseOverworldSpriteFilename generateClothedBitmapStatic generate_front_trainer_sprite_bitmap_from_appearance pbFacingTile pbMessage pbConfirmMessage pbMapInterpreterRunning? pbPrepareBattle pbBattleAnimation pbSceneStandby pbGetTrainerBattleBGM is_fusion_of_any].freeze
+    REQUIRED_GLOBAL_METHODS = %i[getBaseOverworldSpriteFilename generateClothedBitmapStatic generate_front_trainer_sprite_bitmap_from_appearance pbFacingTile pbMessage pbConfirmMessage pbMapInterpreterRunning? pbPrepareBattle pbBattleAnimation pbSceneStandby pbGetTrainerBattleBGM is_fusion_of_any pbMessageFreeText pbCreateMessageWindow pbDisposeMessageWindow pbMessageDisplay pbUpdateSceneMap].freeze
 
     def self.violations
       missing = REQUIRED_INSTANCE_METHODS.flat_map do |class_name, methods|

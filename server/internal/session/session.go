@@ -16,6 +16,7 @@ type ID uint32
 type Session struct {
 	id      ID
 	name    string
+	game    string
 	conn    *transport.Conn
 	started bool
 	closing bool
@@ -28,6 +29,9 @@ func (s *Session) ID() ID { return s.id }
 
 // Name returns the player name given at handshake.
 func (s *Session) Name() string { return s.name }
+
+// Game returns the fingerprint of the client's game build.
+func (s *Session) Game() string { return s.game }
 
 // Send delivers a message. A failure closes the session asynchronously.
 func (s *Session) Send(msgType string, payload interface{}) {

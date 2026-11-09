@@ -37,6 +37,7 @@ const (
 	DeclineBusy    = "busy"
 	DeclineOffline = "offline"
 	DeclineExpired = "expired"
+	DeclineGame    = "game_version"
 )
 
 // Reasons for a duel_ended message.

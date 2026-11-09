@@ -15,6 +15,14 @@ module Multiplayer
       !@client.nil?
     end
 
+    def self.status
+      @client ? @client.status : Client::STATUS_OFFLINE
+    end
+
+    def self.rejection
+      @client&.rejection
+    end
+
     def self.start(config, player_name)
       return if running?
       @client = Client.new(config, player_name)

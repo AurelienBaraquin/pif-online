@@ -5,7 +5,8 @@ module Multiplayer
       "refused" => "The challenge was refused.",
       "busy" => "That player is busy.",
       "offline" => "That player is no longer online.",
-      "expired" => "The challenge expired."
+      "expired" => "The challenge expired.",
+      "game_version" => "That player has a different version of the game, so you cannot duel."
     }.freeze
 
     def self.update

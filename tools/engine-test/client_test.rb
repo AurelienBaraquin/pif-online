@@ -62,15 +62,35 @@ def wait_for(description, peers)
 end
 
 def run_settings_checks
-  File.write("t.json", '{"host":"example.org","port":1234}')
-  config = Multiplayer::Settings.load("t.json")
-  raise "config not parsed" unless config&.host == "example.org" && config.port == 1234
-  File.write("t.json", '{"host":"example.org","enabled":false}')
-  raise "disabled config loaded" if Multiplayer::Settings.load("t.json")
+  settings = Multiplayer::Settings
+  server = settings.parse_address(" play.example.org:1234 ")
+  raise "address not parsed" unless server&.host == "play.example.org" && server.port == 1234
+  raise "default port missing" unless settings.parse_address("10.0.0.2")&.port == Multiplayer::DEFAULT_PORT
+  ["", "http://a.b", "a b", "a.b:0", "a.b:70000", "-a", "a:b:1", "\\C"].each do |text|
+    raise "bad address accepted: #{text}" if settings.parse_address(text)
+  end
+  book = settings::EMPTY_BOOK.add(server).add(server).with_active(server)
+  raise "duplicate kept" unless book.servers.size == 1
+  raise "save failed" unless settings.save(book, "t.json")
+  raise "book not restored: #{settings.load("t.json").to_a}" unless settings.load("t.json") == book
+  raise "active kept after removal" if book.remove(server).active
+  File.write("t.json", '{"servers":[{"host":"a.b","port":99999}]}')
+  raise "invalid server loaded" unless settings.load("t.json") == settings::EMPTY_BOOK
   File.write("t.json", "not json")
-  raise "broken config loaded" if Multiplayer::Settings.load("t.json")
-  raise "missing config loaded" if Multiplayer::Settings.load("absent.json")
-  report("OK   settings accept valid files and reject others")
+  raise "broken file loaded" unless settings.load("t.json") == settings::EMPTY_BOOK
+  raise "missing file loaded" unless settings.load("absent.json") == settings::EMPTY_BOOK
+  report("OK   settings parse addresses and keep the saved servers")
+end
+
+def run_status_checks
+  closed = Multiplayer::Client.new(Multiplayer::Config.new("127.0.0.1", 7), "Nobody")
+  raise "wrong initial status" unless closed.status == Multiplayer::Client::STATUS_CONNECTING
+  closed.start
+  peer = Struct.new(:client).new(closed)
+  wait_for("an unreachable server is reported", [peer]) { closed.status == Multiplayer::Client::STATUS_UNREACHABLE }
+  closed.stop
+  fingerprint = Multiplayer::GameBuild.fingerprint
+  raise "bad fingerprint: #{fingerprint}" unless fingerprint.match?(/\A[0-9a-f]{8}\z/)
 end
 
 def run_guard_checks
@@ -146,6 +166,7 @@ begin
   File.delete(RESULT_FILE) if File.exist?(RESULT_FILE)
   report("MKXPError ancestors: #{defined?(MKXPError) ? MKXPError.ancestors.first(3) : "undefined"}")
   run_settings_checks
+  run_status_checks
   run_guard_checks
   run_session_checks
   run_duel_checks

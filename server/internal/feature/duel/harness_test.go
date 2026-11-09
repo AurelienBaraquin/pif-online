@@ -89,13 +89,18 @@ type testClient struct {
 
 func join(t *testing.T, server testServer, name string) *testClient {
 	t.Helper()
+	return joinWithGame(t, server, name, "ab12")
+}
+
+func joinWithGame(t *testing.T, server testServer, name, game string) *testClient {
+	t.Helper()
 	conn, err := net.Dial("tcp", server.address)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
 	client := &testClient{t: t, conn: conn, reader: bufio.NewReaderSize(conn, protocol.MaxFrameBytes)}
-	client.send(protocol.TypeHello, protocol.Hello{Version: protocol.Version, Name: name})
+	client.send(protocol.TypeHello, protocol.Hello{Version: protocol.Version, Name: name, Game: game})
 	var welcome protocol.Welcome
 	client.expect(protocol.TypeWelcome, &welcome)
 	client.id = welcome.ID

@@ -10,6 +10,15 @@ import (
 
 func text(value string) *string { return &value }
 
+func TestHelloValidateGameBuild(t *testing.T) {
+	cases := map[string]bool{"ab12": true, "": false, "AB12": false, "../x": false, strings.Repeat("a", maxGameBuildLength+1): false}
+	for build, valid := range cases {
+		if err := (Hello{Name: "Red", Game: build}).Validate(); (err == nil) != valid {
+			t.Fatalf("Validate(game %q) = %v", build, err)
+		}
+	}
+}
+
 func TestHelloValidate(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -25,7 +34,7 @@ func TestHelloValidate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := (Hello{Name: tc.input}).Validate(); (err == nil) != tc.valid {
+			if err := (Hello{Name: tc.input, Game: "ab12"}).Validate(); (err == nil) != tc.valid {
 				t.Fatalf("Validate(%q) = %v", tc.input, err)
 			}
 		})

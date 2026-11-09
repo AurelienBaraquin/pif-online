@@ -169,6 +169,8 @@ func (f *Feature) handleChallenge(sender *session.Session, data json.RawMessage)
 		decline(sender, targetID, protocol.DeclineOffline)
 	case f.isEngaged(sender.ID()) || f.isEngaged(targetID):
 		decline(sender, targetID, protocol.DeclineBusy)
+	case sender.Game() != target.Game():
+		decline(sender, targetID, protocol.DeclineGame)
 	default:
 		f.invite(sender, target, challenge.Rules)
 	}

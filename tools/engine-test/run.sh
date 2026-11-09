@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs an engine test on Windows from WSL against a locally built server.
-# usage: run.sh client|game|battle|codec|interaction|network|rules|robust|two|flip <game-directory> <windows-staging-directory>
+# usage: run.sh client|game|battle|codec|interaction|menu|network|rules|robust|two|flip <game-directory> <windows-staging-directory>
 set -euo pipefail
 
 # Engine tests share the server port and the desktop: run one at a time.
@@ -42,7 +42,7 @@ stage_game_with_test() {
   for test_file in "$@"; do
     cp "$root/tools/engine-test/$test_file" "$stage/Data/Scripts/998_MultiplayerTest/"
   done
-  printf '{"host":"127.0.0.1","port":7777}\n' >"$stage/multiplayer.json"
+  printf '{"servers":[{"host":"127.0.0.1","port":7777}],"active":{"host":"127.0.0.1","port":7777}}\n' >"$stage/multiplayer.json"
 }
 
 prepare_game() {
@@ -57,6 +57,10 @@ prepare_battle() {
 # its entry point, so it must load second.
 prepare_interaction() {
   stage_game_with_test battle_determinism_test.rb interaction_test.rb
+}
+
+prepare_menu() {
+  stage_game_with_test battle_determinism_test.rb menu_test.rb
 }
 
 prepare_network() {

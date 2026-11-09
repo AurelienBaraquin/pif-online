@@ -10,7 +10,7 @@ import (
 )
 
 // Version must match PROTOCOL_VERSION in the client's core/001_config.rb.
-const Version = 5
+const Version = 6
 
 // MaxFrameBytes is the largest accepted line, excluding its newline.
 const MaxFrameBytes = 16 * 1024
@@ -40,13 +40,14 @@ const (
 )
 
 const (
-	maxNameRunes   = 32
-	maxMapID       = 9999
-	maxCoordinate  = 9999
-	maxSpeed       = 6
-	maxSkin        = 99
-	maxColorShift  = 1000000
-	maxInterestSet = 16
+	maxNameRunes       = 32
+	maxGameBuildLength = 16
+	maxMapID           = 9999
+	maxCoordinate      = 9999
+	maxSpeed           = 6
+	maxSkin            = 99
+	maxColorShift      = 1000000
+	maxInterestSet     = 16
 )
 
 var (
@@ -66,6 +67,7 @@ type Envelope struct {
 type Hello struct {
 	Version int    `json:"v"`
 	Name    string `json:"name"`
+	Game    string `json:"game"`
 }
 
 // Validate checks the content of a Hello, except its version.
@@ -73,7 +75,23 @@ func (h Hello) Validate() error {
 	if !validDisplayName(h.Name, maxNameRunes) {
 		return fmt.Errorf("%w: name", ErrInvalid)
 	}
+	if !validGameBuild(h.Game) {
+		return fmt.Errorf("%w: game", ErrInvalid)
+	}
 	return nil
+}
+
+// validGameBuild accepts the short lowercase hex fingerprint clients send.
+func validGameBuild(build string) bool {
+	if len(build) == 0 || len(build) > maxGameBuildLength {
+		return false
+	}
+	for _, c := range build {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // Welcome accepts a session.

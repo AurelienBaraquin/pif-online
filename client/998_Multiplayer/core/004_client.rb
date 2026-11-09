@@ -4,8 +4,16 @@ module Multiplayer
   class Client
     MAX_EVENTS_PER_TICK = 128
     FATAL_ERROR_CODES = %w[version_mismatch bad_message].freeze
+    REJECTION_CODES = (FATAL_ERROR_CODES + %w[server_full]).freeze
 
-    attr_reader :player_id
+    STATUS_OFFLINE = :offline
+    STATUS_CONNECTING = :connecting
+    STATUS_READY = :ready
+    STATUS_LOST = :lost
+    STATUS_UNREACHABLE = :unreachable
+    STATUS_REJECTED = :rejected
+
+    attr_reader :player_id, :rejection
 
     def initialize(config, player_name)
       @player_name = player_name
@@ -15,10 +23,16 @@ module Multiplayer
       @lost_callbacks = []
       @ready = false
       @player_id = nil
+      @status = STATUS_CONNECTING
+      @rejection = nil
     end
 
     def ready?
       @ready
+    end
+
+    def status
+      @rejection ? STATUS_REJECTED : @status
     end
 
     def on(type, &handler)
@@ -66,9 +80,10 @@ module Multiplayer
     def process(event)
       case event.kind
       when Connection::CONNECTED
-        transmit("hello", { "v" => PROTOCOL_VERSION, "name" => @player_name })
-      when Connection::DISCONNECTED
+        transmit("hello", { "v" => PROTOCOL_VERSION, "name" => @player_name, "game" => GameBuild.fingerprint })
+      when Connection::DISCONNECTED, Connection::FAILED
         mark_lost
+        @status = STATUS_UNREACHABLE if @status == STATUS_CONNECTING
       when Connection::LINE
         receive(event.line)
       end
@@ -78,6 +93,7 @@ module Multiplayer
       return unless @ready
       @ready = false
       @player_id = nil
+      @status = STATUS_LOST
       @lost_callbacks.each(&:call)
     end
 
@@ -98,11 +114,14 @@ module Multiplayer
     def mark_ready(data)
       @player_id = data["id"].to_i
       @ready = true
+      @status = STATUS_READY
+      @rejection = nil
       @ready_callbacks.each(&:call)
     end
 
     def handle_error(data)
       Log.write("server error #{data["code"]}: #{data["message"]}")
+      @rejection = data["code"] if REJECTION_CODES.include?(data["code"])
       @connection.stop if FATAL_ERROR_CODES.include?(data["code"])
     end
   end

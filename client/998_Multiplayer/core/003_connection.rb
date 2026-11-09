@@ -8,6 +8,7 @@ module Multiplayer
 
     CONNECTED = :connected
     DISCONNECTED = :disconnected
+    FAILED = :failed
     LINE = :line
 
     PING_LINE = "{\"t\":\"ping\"}"
@@ -81,6 +82,7 @@ module Multiplayer
       socket
     rescue SystemCallError, SocketError, IOError => e
       Log.write("cannot reach #{@config.host}:#{@config.port}: #{e.class}: #{e.message}")
+      @inbound << Event.new(FAILED, nil)
       nil
     end
 
