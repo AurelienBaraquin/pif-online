@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs an engine test on Windows from WSL against a locally built server.
-# usage: run.sh client|game|battle <game-directory> <windows-staging-directory>
+# usage: run.sh client|game|battle|codec <game-directory> <windows-staging-directory>
 set -euo pipefail
 
 mode=$1
@@ -29,13 +29,15 @@ prepare_client() {
     "${overlay_core[@]}" "$root/tools/engine-test/client_test.rb"
 }
 
-# usage: stage_game_with_test <test-file>
+# usage: stage_game_with_test <test-file>...
 stage_game_with_test() {
   [ -f "$stage/InfiniteFusion2.exe" ] && [ -d "$stage/Graphics" ] || stage_full_game
   rm -rf "$stage/Data/Scripts/998_Multiplayer" "$stage/Data/Scripts/998_MultiplayerTest"
   cp -r "$overlay" "$stage/Data/Scripts/"
   mkdir -p "$stage/Data/Scripts/998_MultiplayerTest"
-  cp "$root/tools/engine-test/$1" "$stage/Data/Scripts/998_MultiplayerTest/"
+  for test_file in "$@"; do
+    cp "$root/tools/engine-test/$test_file" "$stage/Data/Scripts/998_MultiplayerTest/"
+  done
   printf '{"host":"127.0.0.1","port":7777}\n' >"$stage/multiplayer.json"
 }
 
@@ -45,6 +47,12 @@ prepare_game() {
 
 prepare_battle() {
   stage_game_with_test battle_determinism_test.rb
+}
+
+# The codec test reuses the duel harness of the determinism test and replaces
+# its entry point, so it must load second.
+prepare_codec() {
+  stage_game_with_test battle_determinism_test.rb party_codec_test.rb
 }
 
 "prepare_$mode"
