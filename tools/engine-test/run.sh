@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs an engine test on Windows from WSL against a locally built server.
-# usage: run.sh client|game <game-directory> <windows-staging-directory>
+# usage: run.sh client|game|battle <game-directory> <windows-staging-directory>
 set -euo pipefail
 
 mode=$1
@@ -8,7 +8,7 @@ game=$2
 stage=$3
 root=$(cd "$(dirname "$0")/../.." && pwd)
 overlay="$root/client/998_Multiplayer"
-timeout_ms=120000
+timeout_ms=180000
 
 mapfile -t overlay_core < <(find "$overlay/core" "$overlay/features" -name '*.rb' | sort)
 
@@ -20,7 +20,7 @@ stage_runtime() {
 
 stage_full_game() {
   mkdir -p "$stage"
-  (cd "$game" && tar --exclude=.git -cf - .) | (cd "$stage" && tar -xf -)
+  (cd "$game" && tar --exclude=.git --exclude=.claude-flow -cf - .) | (cd "$stage" && tar -xf -)
 }
 
 prepare_client() {
@@ -29,13 +29,22 @@ prepare_client() {
     "${overlay_core[@]}" "$root/tools/engine-test/client_test.rb"
 }
 
-prepare_game() {
+# usage: stage_game_with_test <test-file>
+stage_game_with_test() {
   [ -f "$stage/InfiniteFusion2.exe" ] && [ -d "$stage/Graphics" ] || stage_full_game
   rm -rf "$stage/Data/Scripts/998_Multiplayer" "$stage/Data/Scripts/998_MultiplayerTest"
   cp -r "$overlay" "$stage/Data/Scripts/"
   mkdir -p "$stage/Data/Scripts/998_MultiplayerTest"
-  cp "$root/tools/engine-test/game_test.rb" "$stage/Data/Scripts/998_MultiplayerTest/"
+  cp "$root/tools/engine-test/$1" "$stage/Data/Scripts/998_MultiplayerTest/"
   printf '{"host":"127.0.0.1","port":7777}\n' >"$stage/multiplayer.json"
+}
+
+prepare_game() {
+  stage_game_with_test game_test.rb
+}
+
+prepare_battle() {
+  stage_game_with_test battle_determinism_test.rb
 }
 
 "prepare_$mode"
