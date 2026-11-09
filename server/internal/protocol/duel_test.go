@@ -26,12 +26,12 @@ func TestDuelRulesValidate(t *testing.T) {
 		valid bool
 	}{
 		{"accepts bounds", DuelRules{PartySize: 6, Level: 100, TurnSeconds: 300}, true},
-		{"accepts unchanged level", DuelRules{PartySize: 1, TurnSeconds: 10}, true},
-		{"rejects empty party", DuelRules{TurnSeconds: 10}, false},
-		{"rejects large party", DuelRules{PartySize: 7, TurnSeconds: 10}, false},
-		{"rejects level above max", DuelRules{PartySize: 1, Level: 101, TurnSeconds: 10}, false},
-		{"rejects negative level", DuelRules{PartySize: 1, Level: -1, TurnSeconds: 10}, false},
-		{"rejects short turn", DuelRules{PartySize: 1, TurnSeconds: 9}, false},
+		{"accepts unchanged level", DuelRules{PartySize: 1, TurnSeconds: 30}, true},
+		{"rejects empty party", DuelRules{TurnSeconds: 30}, false},
+		{"rejects large party", DuelRules{PartySize: 7, TurnSeconds: 30}, false},
+		{"rejects level above max", DuelRules{PartySize: 1, Level: 101, TurnSeconds: 30}, false},
+		{"rejects negative level", DuelRules{PartySize: 1, Level: -1, TurnSeconds: 30}, false},
+		{"rejects short turn", DuelRules{PartySize: 1, TurnSeconds: 29}, false},
 		{"rejects long turn", DuelRules{PartySize: 1, TurnSeconds: 301}, false},
 	}
 	for _, tc := range cases {
@@ -174,15 +174,21 @@ func TestMaximalPartiesFitInAFrame(t *testing.T) {
 		party[i] = maximalPokemon()
 	}
 	rules := DuelRules{PartySize: 6, HeldItems: true, TurnSeconds: 60}
-	if err := (DuelParty{Party: party}).Validate(rules); err != nil {
+	asset := strings.Repeat("a", 64)
+	appearance := Appearance{Skin: maxSkin, Clothes: &asset, Hair: &asset, Hat: &asset, Hat2: &asset,
+		ClothesColor: -maxColorShift, HairColor: -maxColorShift, HatColor: -maxColorShift, Hat2Color: -maxColorShift}
+	if err := (DuelParty{Party: party, Appearance: appearance}).Validate(rules); err != nil {
 		t.Fatal(err)
 	}
 	name := strings.Repeat("<", maxNameRunes)
 	frames := map[string]interface{}{
-		TypeDuelParty: DuelParty{Party: party},
+		TypeDuelParty: DuelParty{Party: party, Appearance: appearance},
 		TypeDuelStart: DuelStart{
 			Seed: 4294967295, Side: 1, Rules: rules,
-			Players: [2]DuelPlayer{{ID: 4294967295, Name: name}, {ID: 4294967295, Name: name}},
+			Players: [2]DuelPlayer{
+				{ID: 4294967295, Name: name, Appearance: appearance},
+				{ID: 4294967295, Name: name, Appearance: appearance},
+			},
 			Parties: [2][]Pokemon{party, party},
 		},
 	}
@@ -195,5 +201,57 @@ func TestMaximalPartiesFitInAFrame(t *testing.T) {
 			t.Errorf("%s frame is %d bytes, limit %d", msgType, len(frame), MaxFrameBytes)
 		}
 		t.Logf("%s: %d bytes", msgType, len(frame))
+	}
+}
+
+func TestDuelRulesClauses(t *testing.T) {
+	cases := []struct {
+		name    string
+		clauses []string
+		valid   bool
+	}{
+		{"accepts none", nil, true},
+		{"accepts known", []string{"sleep", "species"}, true},
+		{"rejects unknown", []string{"nope"}, false},
+		{"rejects duplicates", []string{"sleep", "sleep"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rules := DuelRules{PartySize: 1, TurnSeconds: 60, Clauses: tc.clauses}
+			if err := rules.Validate(); (err == nil) != tc.valid {
+				t.Fatalf("Validate() = %v", err)
+			}
+		})
+	}
+}
+
+func TestPartyClauses(t *testing.T) {
+	member := func(species string, item *string) Pokemon {
+		pokemon := validPokemon()
+		pokemon.Species = species
+		pokemon.Item = item
+		return pokemon
+	}
+	cases := []struct {
+		name   string
+		clause string
+		party  []Pokemon
+		valid  bool
+	}{
+		{"species accepts distinct", "species", []Pokemon{member("B1H2", nil), member("B2H1", nil)}, true},
+		{"species rejects same head and body", "species", []Pokemon{member("B1H2", nil), member("B1H2", nil)}, false},
+		{"item accepts several without item", "item", []Pokemon{member("A", nil), member("B", nil)}, true},
+		{"item rejects duplicate", "item", []Pokemon{member("A", text("LEFTOVERS")), member("B", text("LEFTOVERS"))}, false},
+		{"no_fusion accepts plain", "no_fusion", []Pokemon{member("PIKACHU", nil), member("MEW", nil)}, true},
+		{"no_fusion rejects fusion", "no_fusion", []Pokemon{member("PIKACHU", nil), member("B1H2", nil)}, false},
+		{"client-checked clause passes the server", "no_legendary", []Pokemon{member("MEWTWO", nil), member("MEW", nil)}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rules := DuelRules{PartySize: 2, HeldItems: true, TurnSeconds: 60, Clauses: []string{tc.clause}}
+			if err := (DuelParty{Party: tc.party}).Validate(rules); (err == nil) != tc.valid {
+				t.Fatalf("Validate() = %v", err)
+			}
+		})
 	}
 }

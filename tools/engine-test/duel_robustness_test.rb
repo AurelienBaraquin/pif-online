@@ -35,6 +35,10 @@ module DuelRobustnessTest
     def for_rules(_rules)
       DuelRobustnessTest.bot_party(@move)
     end
+
+    def appearance
+      {}
+    end
   end
 
   class << self
@@ -126,13 +130,13 @@ module DuelRobustnessTest
                     after(40), press(Input::USE)]),
       Scenario.new("opponent disconnects during the party screen", 60, "GROWL", "Bot disconnected. You won the duel!", nil,
                    open_party + [bot_disconnects]),
-      Scenario.new("you ran out of time in the fight menu", 15, "GROWL", "You ran out of time. You lost the duel.",
+      Scenario.new("you ran out of time in the fight menu", 30, "GROWL", "You ran out of time. You lost the duel.",
                    "{local} ran out of time. You won the duel!",
                    [bot_chooses, timer_open, after(10), press(Input::USE)]),
-      Scenario.new("both ran out of time", 10, "GROWL",
+      Scenario.new("both ran out of time", 30, "GROWL",
                    "Time ran out for both players. The duel ended without a winner.",
                    "Time ran out for both players. The duel ended without a winner.", []),
-      Scenario.new("stalled replacement loses", 20, "SWIFT", "You ran out of time. You lost the duel.",
+      Scenario.new("stalled replacement loses", 30, "SWIFT", "You ran out of time. You lost the duel.",
                    "{local} ran out of time. You won the duel!",
                    choose_first_move + [bot_chooses, overlay_open]),
       Scenario.new("forfeit during the replacement screen", 60, "SWIFT", "Bot forfeited. You won the duel!", LOCAL_FORFEITED,

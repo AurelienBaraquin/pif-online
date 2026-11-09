@@ -6,7 +6,7 @@ Multiplayer::Runtime.stop if defined?(Multiplayer::Runtime)
 
 module Multiplayer
   # Must match Version in server/internal/protocol/protocol.go.
-  PROTOCOL_VERSION = 3
+  PROTOCOL_VERSION = 4
   CONFIG_FILE = "multiplayer.json"
   LOG_FILE = "multiplayer.log"
   DEFAULT_PORT = 7777

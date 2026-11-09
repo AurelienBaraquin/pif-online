@@ -25,6 +25,9 @@ const (
 	maxReplacementsPerRound = 8
 	// maxPendingHashes bounds memory when one client stops reporting hashes.
 	maxPendingHashes = 256
+	// animationAllowance is the time clients may take to play a round back
+	// before the turn timer starts counting.
+	animationAllowance = 60 * time.Second
 )
 
 var errWrongState = errors.New("message not valid in this duel state")
@@ -59,6 +62,7 @@ func (f *Feature) Handlers() map[string]session.Handler {
 		protocol.TypeDuelResult:      f.handleResult,
 		protocol.TypeDuelForfeit:     f.handleForfeit,
 		protocol.TypeDuelReplacing:   f.handleReplacing,
+		protocol.TypeDuelReject:      f.handleReject,
 	}
 }
 
@@ -133,9 +137,13 @@ func decline(to *session.Session, other session.ID, reason string) {
 // matchInPhase returns the sender's match in the given phase. It returns nil
 // without error for a message that was in flight when the match ended, and an
 // error for a message that could never have been valid.
-func (f *Feature) matchInPhase(sender *session.Session, wanted phase) (*match, error) {
-	if m, engaged := f.matches[sender.ID()]; engaged && m.phase == wanted {
-		return m, nil
+func (f *Feature) matchInPhase(sender *session.Session, wanted ...phase) (*match, error) {
+	if m, engaged := f.matches[sender.ID()]; engaged {
+		for _, candidate := range wanted {
+			if m.phase == candidate {
+				return m, nil
+			}
+		}
 	}
 	if _, stale := f.recent[sender.ID()]; stale {
 		return nil, nil
@@ -225,6 +233,7 @@ func (f *Feature) handleParty(sender *session.Session, data json.RawMessage) err
 		return fmt.Errorf("%w: second party", errWrongState)
 	}
 	m.parties[side] = party.Party
+	m.appearances[side] = party.Appearance
 	if m.hasBothParties() {
 		return f.start(m)
 	}
@@ -240,8 +249,8 @@ func (f *Feature) start(m *match) error {
 	m.round = 1
 	m.deadline = f.now().Add(m.turnDuration())
 	players := [2]protocol.DuelPlayer{
-		{ID: uint32(m.players[0].ID()), Name: m.players[0].Name()},
-		{ID: uint32(m.players[1].ID()), Name: m.players[1].Name()},
+		{ID: uint32(m.players[0].ID()), Name: m.players[0].Name(), Appearance: m.appearances[0]},
+		{ID: uint32(m.players[1].ID()), Name: m.players[1].Name(), Appearance: m.appearances[1]},
 	}
 	for side, player := range m.players {
 		player.Send(protocol.TypeDuelStart, protocol.DuelStart{
@@ -285,7 +294,7 @@ func (f *Feature) handleChoice(sender *session.Session, data json.RawMessage) er
 		return nil
 	}
 	turn := m.resolveRound()
-	m.deadline = f.now().Add(m.turnDuration())
+	m.deadline = f.now().Add(m.resolvingDuration())
 	for _, player := range m.players {
 		player.Send(protocol.TypeDuelTurn, turn)
 	}
@@ -311,7 +320,7 @@ func (f *Feature) handleReplacement(sender *session.Session, data json.RawMessag
 	m.lastSeq[side] = replacement.Seq
 	m.owesReplacement[side] = false
 	m.replacements[side]++
-	m.deadline = f.now().Add(m.turnDuration())
+	m.deadline = f.now().Add(m.resolvingDuration())
 	replaced := protocol.DuelReplaced{Side: side, Seq: replacement.Seq, Index: replacement.Index}
 	for _, player := range m.players {
 		player.Send(protocol.TypeDuelReplaced, replaced)
@@ -337,6 +346,10 @@ func (f *Feature) handleHash(sender *session.Session, data json.RawMessage) erro
 	}
 	if !m.recordHash(side, hash) || len(m.pendingHashes) > maxPendingHashes {
 		f.end(m, nil, protocol.EndDesync)
+		return nil
+	}
+	if m.bothHashedRound() {
+		m.deadline = f.now().Add(m.turnDuration())
 	}
 	return nil
 }
@@ -381,7 +394,26 @@ func (f *Feature) handleReplacing(sender *session.Session, _ json.RawMessage) er
 	if m.round < 2 {
 		return fmt.Errorf("%w: replacing in round %d", errWrongState, m.round)
 	}
-	m.owesReplacement[m.sideOf(sender.ID())] = true
+	side := m.sideOf(sender.ID())
+	if !m.owesReplacement[side] {
+		m.owesReplacement[side] = true
+		m.deadline = f.now().Add(m.turnDuration())
+	}
+	return nil
+}
+
+// handleReject ends a duel that a client refuses to play because a team breaks
+// the rules. It can only be sent before any round resolved, and nobody wins, so
+// it cannot be used to escape a losing duel.
+func (f *Feature) handleReject(sender *session.Session, _ json.RawMessage) error {
+	m, err := f.matchInPhase(sender, phaseParties, phaseBattle)
+	if m == nil {
+		return err
+	}
+	if m.phase == phaseBattle && m.round > 1 {
+		return fmt.Errorf("%w: reject in round %d", errWrongState, m.round)
+	}
+	f.end(m, nil, protocol.EndIllegal)
 	return nil
 }
 

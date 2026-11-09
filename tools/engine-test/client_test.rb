@@ -16,11 +16,15 @@ POKEMON = {
   "name" => "Pika", "shiny" => false, "head_shiny" => false, "body_shiny" => false,
   "hidden_power_type" => nil, "size_category" => nil, "pif_sprite" => nil
 }.freeze
-RULES = Multiplayer::Duel::Rules.new(1, 0, false, 60)
+RULES = Multiplayer::Duel::Rules.new(1, 0, false, 60, [])
 
 module StubPartySource
   def self.for_rules(_rules)
     [POKEMON]
+  end
+
+  def self.appearance
+    {}
   end
 end
 

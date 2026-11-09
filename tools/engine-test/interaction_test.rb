@@ -31,6 +31,10 @@ module InteractionTest
     def self.for_rules(rules)
       Array.new(rules.party_size) { BOT_POKEMON }
     end
+
+    def self.appearance
+      {}
+    end
   end
 
   # Always uses its first move.

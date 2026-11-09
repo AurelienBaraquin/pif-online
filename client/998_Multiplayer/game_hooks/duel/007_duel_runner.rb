@@ -1,4 +1,20 @@
 module Multiplayer
+  # Turns a duelist's appearance, as received from the network, into the game's
+  # own type. The values come from another player, so they are checked again.
+  module DuelLook
+    def self.from_wire(data)
+      return nil unless data.is_a?(Hash)
+      TrainerAppearance.new(LocalPlayer.integer(data["skin"], LocalPlayer::MAX_SKIN, 0),
+                            LocalPlayer.asset(data["hat"]), LocalPlayer.asset(data["clothes"]), LocalPlayer.asset(data["hair"]),
+                            color(data["hair_color"]), color(data["clothes_color"]), color(data["hat_color"]),
+                            LocalPlayer.asset(data["hat2"]), color(data["hat2_color"]))
+    end
+
+    def self.color(value)
+      LocalPlayer.integer(value, LocalPlayer::MAX_COLOR, -LocalPlayer::MAX_COLOR)
+    end
+  end
+
   # A battle scene that leaves as soon as the duel ends on the server. The
   # check runs from Graphics.update because the party and summary screens have
   # their own loops. It is armed only between the scene's start and its end, so
@@ -20,6 +36,7 @@ module Multiplayer
     end
 
     def with_turn_timer
+      @link.restart_turn_clock
       @turn_timer = DuelTurnTimer.new(@link)
       yield
     ensure
@@ -27,11 +44,38 @@ module Multiplayer
       @turn_timer = nil
     end
 
+    # Whichever side the viewer plays, the near trainer is the viewer.
+    def pbCreateTrainerBackSprite(idx_trainer, trainer_type, num_trainers = 1)
+      super
+      dress(@sprites["player_#{idx_trainer + 1}"], @link.side)
+    end
+
+    def pbCreateTrainerFrontSprite(idx_trainer, trainer_type, num_trainers = 1, sprite_override = nil, custom_appearance = nil)
+      super
+      sprite = @sprites["trainer_#{idx_trainer + 1}"]
+      dress(sprite, 1 - @link.side)
+      return unless sprite.bitmap
+      sprite.ox = sprite.src_rect.width / 2
+      sprite.oy = sprite.bitmap.height
+    end
+
     def on_frame
       Guard.run(TIMER_SITE) { @turn_timer&.update }
       return unless @abort_armed && @link.ending
       @abort_armed = false
       @battle.pbAbort
+    end
+
+    private
+
+    # Keeps the sprite the engine created when the appearance cannot be drawn.
+    def dress(sprite, side)
+      look = DuelLook.from_wire(@link.players[side]["appearance"])
+      return unless look
+      sprite.setBitmapDirectly(generate_front_trainer_sprite_bitmap_from_appearance(look, false))
+      sprite.src_rect.set(0, 0, sprite.bitmap.width, sprite.bitmap.height)
+    rescue *Guard::RECOVERABLE => e
+      Log.write("trainer sprite fallback for side #{side}: #{e.class}: #{e.message}")
     end
   end
 
@@ -41,6 +85,7 @@ module Multiplayer
     # Counts the spirits released when a Pokémon faints, which a duel must not advance.
     PRESERVED_VARIABLES = %i[VAR_ODDKEYSTONE_NB].freeze
     GUARD_SITE = "duel.battle"
+    ILLEGAL_TEXT = "The duel was cancelled because a team breaks the rules."
     # Wording by server reason. A reason lacking an outcome uses FALLBACK_TEXTS.
     ENDING_TEXTS = {
       "finished" => { won: "You won the duel!", lost: "You lost the duel.", none: "The duel ended in a draw." },
@@ -49,6 +94,7 @@ module Multiplayer
       "timeout" => { won: "{1} ran out of time. You won the duel!", lost: "You ran out of time. You lost the duel.",
                      none: "Time ran out for both players. The duel ended without a winner." },
       "desync" => { none: "The duel was cancelled because the two games disagreed." },
+      Duel::REASON_ILLEGAL => { none: ILLEGAL_TEXT },
       Duel::REASON_CONNECTION_LOST => { none: "The connection to the server was lost. The duel was cancelled." }
     }.freeze
     FALLBACK_TEXTS = { won: "You won the duel!", lost: "You lost the duel.", none: "The duel ended without a winner." }.freeze
@@ -66,13 +112,14 @@ module Multiplayer
 
     def self.build_battle(link, scene, chooser, waiter)
       parties = link.parties.map { |party| PartyCodec.decode(party) }
-      trainers = link.players.map { |player| NPCTrainer.new(player["name"], $Trainer.trainer_type) }
+      trainers = link.players.map { |player| NPCTrainer.new(display_name(player), $Trainer.trainer_type) }
       battle = NetworkBattle.new(scene, parties[0], parties[1], [trainers[0]], [trainers[1]])
       battle.party1starts = [0]
       battle.party2starts = [0]
       battle.configure(link: link, chooser: chooser, waiter: waiter)
       pbPrepareBattle(battle)
       isolate(battle)
+      DuelClauses.apply_to(battle, link.rules["clauses"])
       battle
     end
 
@@ -101,7 +148,15 @@ module Multiplayer
       @scene = nil
     end
 
+    # The server cannot check every rule: an opponent's illegal team stops here.
+    def self.refuse(link)
+      link.reject
+      Graphics.update until link.ending
+      link.ending
+    end
+
     def self.play(link)
+      return refuse(link) if DuelClauses.violation(link.parties[1 - link.side], link.rules["clauses"])
       scene = SideOneDisplay.scene_for(link)
       scene.link = link
       @scene = scene
@@ -126,10 +181,14 @@ module Multiplayer
       _INTL(template, opponent_name(link))
     end
 
-    # The name goes into a message, whose text is interpreted: a backslash in a
-    # player's name would start a control code.
     def self.opponent_name(link)
-      link.players[1 - link.side]["name"].to_s.delete("\\")
+      display_name(link.players[1 - link.side])
+    end
+
+    # The name goes into messages, whose text is interpreted: a backslash in a
+    # player's name would start a control code.
+    def self.display_name(player)
+      player["name"].to_s.delete("\\")
     end
 
     # A duel must neither read nor change the save. The battle code writes to

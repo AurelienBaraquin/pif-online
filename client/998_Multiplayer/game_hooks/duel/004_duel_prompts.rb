@@ -29,6 +29,7 @@ module Multiplayer
 
     def self.notice_text(notice)
       return DuelRunner.outcome_text(notice.link, notice.link.ending) if notice.link
+      return _INTL(DuelRunner::ILLEGAL_TEXT) if notice.reason == Duel::REASON_ILLEGAL
       return _INTL("The duel is over.") if notice.kind == Duel::NOTICE_ENDED
       _INTL(DECLINE_MESSAGES.fetch(notice.reason, "The challenge was cancelled."))
     end
@@ -37,13 +38,22 @@ module Multiplayer
       invitation = duel.take_invitation
       return false unless invitation
       enough = DuelParty.available_count >= invitation.rules.party_size
-      duel.respond(invitation, enough && confirm_invitation(invitation))
+      duel.respond(invitation, enough && confirm_invitation(invitation) && !warn_if_illegal(invitation.rules))
       true
     end
 
     def self.confirm_invitation(invitation)
-      pbConfirmMessage(_INTL("{1} challenges you to a duel! {2} Accept?",
-                             invitation.name, RulesMenu.summary(invitation.rules)))
+      lines = RulesMenu.summary(invitation.rules)
+      pbMessage(_INTL("{1} challenges you to a duel!", invitation.name))
+      lines[0...-1].each { |line| pbMessage(line) }
+      pbConfirmMessage(_INTL("{1} Accept?", lines.last))
+    end
+
+    # Tells the player which rule the local team breaks. Returns whether it does.
+    def self.warn_if_illegal(rules)
+      clause = DuelParty.violation(rules)
+      pbMessage(_INTL("Your team breaks the rule: {1}.", _INTL(clause.label))) if clause
+      !clause.nil?
     end
 
     def self.begin_duel(duel)

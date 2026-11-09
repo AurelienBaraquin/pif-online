@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs an engine test on Windows from WSL against a locally built server.
-# usage: run.sh client|game|battle|codec|interaction|network|robust|two|flip|robust <game-directory> <windows-staging-directory>
+# usage: run.sh client|game|battle|codec|interaction|network|rules|robust|two|flip <game-directory> <windows-staging-directory>
 set -euo pipefail
 
 # Engine tests share the server port and the desktop: run one at a time.
@@ -65,6 +65,10 @@ prepare_network() {
 
 prepare_codec() {
   stage_game_with_test battle_determinism_test.rb party_codec_test.rb
+}
+
+prepare_rules() {
+  stage_game_with_test battle_determinism_test.rb network_duel_test.rb rules_duel_test.rb
 }
 
 prepare_robust() {

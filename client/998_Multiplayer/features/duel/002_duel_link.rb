@@ -44,6 +44,11 @@ module Multiplayer
       @client.deliver("duel_result", { "winner" => winner })
     end
 
+    # Cancels a duel whose teams break the rules. Only valid before round 1 resolves.
+    def reject
+      @client.deliver("duel_reject", nil)
+    end
+
     def forfeit
       @client.deliver("duel_forfeit", nil)
     end
@@ -65,12 +70,10 @@ module Multiplayer
 
     def receive_turn(data)
       @turns[data["round"].to_i] = data["choices"].map { |choice| parse_choice(choice) }
-      restart_turn_clock
     end
 
     def receive_replacement(data)
       @replacements[data["side"].to_i] << data["index"].to_i
-      restart_turn_clock
     end
 
     def finish(data)
@@ -78,11 +81,12 @@ module Multiplayer
       @ending = Ending.new(winner&.to_i, data["reason"])
     end
 
-    private
-
+    # Called when a menu opens: the server's timer counts from about that moment.
     def restart_turn_clock
       @turn_deadline = now + @rules["turn_seconds"].to_i
     end
+
+    private
 
     def now
       Process.clock_gettime(Process::CLOCK_MONOTONIC)

@@ -2,10 +2,10 @@ module Multiplayer
   # Client side of the duel flow, from the challenge to the start of the battle.
   # Engine-independent: game_hooks/duel displays what this class queues.
   class Duel
-    Rules = Struct.new(:party_size, :level, :held_items, :turn_seconds) do
+    Rules = Struct.new(:party_size, :level, :held_items, :turn_seconds, :clauses) do
       def to_wire
         { "party_size" => party_size, "level" => level,
-          "held_items" => held_items, "turn_seconds" => turn_seconds }
+          "held_items" => held_items, "turn_seconds" => turn_seconds, "clauses" => clauses || [] }
       end
     end
     Invitation = Struct.new(:from, :name, :rules)
@@ -15,8 +15,11 @@ module Multiplayer
     NOTICE_DECLINED = :declined
     NOTICE_ENDED = :ended
     REASON_CONNECTION_LOST = "connection_lost"
+    REASON_ILLEGAL = "illegal_party"
 
-    # party_source responds to for_rules(rules) and returns the encoded party.
+    # party_source responds to for_rules(rules), returning the encoded party or
+    # nil when the team cannot play under those rules,
+    # and to appearance, returning how the local player is drawn.
     def initialize(client, party_source)
       @client = client
       @party_source = party_source
@@ -83,13 +86,15 @@ module Multiplayer
     def receive_invitation(data)
       rules = data["rules"]
       @invitation = Invitation.new(data["from"].to_i, data["name"], Rules.new(
-        rules["party_size"].to_i, rules["level"].to_i, rules["held_items"], rules["turn_seconds"].to_i
+        rules["party_size"].to_i, rules["level"].to_i, rules["held_items"], rules["turn_seconds"].to_i, Array(rules["clauses"])
       ))
       @invitation_shown = false
     end
 
     def send_party
-      @client.deliver("duel_party", { "party" => @party_source.for_rules(@rules) })
+      party = @party_source.for_rules(@rules)
+      return @client.deliver("duel_reject", nil) unless party
+      @client.deliver("duel_party", { "party" => party, "appearance" => @party_source.appearance })
     end
 
     def begin_duel(data)

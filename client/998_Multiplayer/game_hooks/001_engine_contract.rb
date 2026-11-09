@@ -9,16 +9,18 @@ module Multiplayer
       "AnimatedBitmap" => %i[bitmap bitmap=],
       "Scene_Map" => %i[update],
       "PokeBattle_Battle" => %i[pbCommandPhaseLoop pbSwitchInBetween pbGetReplacementPokemonIndex pbCanShowCommands? pbAbort pbOwnedByPlayer? pbThisEx pbMessageOnRecall pbMessagesOnReplace pbStartBattleSendOut pbEndOfBattle],
-      "PokeBattle_Scene" => %i[pbStartBattle pbEndBattle pbCreateBackdropSprites pbFindMoveAnimDetails pbShowAbilitySplash pbHideAbilitySplash pbShowPartyLineup],
+      "PokeBattle_Scene" => %i[pbStartBattle pbEndBattle pbCreateBackdropSprites pbCreateTrainerBackSprite pbCreateTrainerFrontSprite pbFindMoveAnimDetails pbShowAbilitySplash pbHideAbilitySplash pbShowPartyLineup],
       "PokemonDataBox" => %i[battler=],
       "PokemonBattlerSprite" => %i[pbSetPosition],
       "GameData::Species" => %i[apply_metrics_to_sprite],
       "PokemonParty_Scene" => %i[pbStartScene pbEndScene],
       "PokemonSummary_Scene" => %i[pbStartScene pbEndScene],
       "PokeBattle_Battler" => %i[pbSuccessCheckPerHit pbThis pbTeam pbOpposingTeam],
-      "Trainer" => %i[able_party]
+      "Trainer" => %i[able_party],
+      "TrainerAppearance" => %i[clothes hair hat hat2 skin_color],
+      "IconSprite" => %i[setBitmapDirectly]
     }.freeze
-    REQUIRED_GLOBAL_METHODS = %i[getBaseOverworldSpriteFilename generateClothedBitmapStatic pbFacingTile pbMessage pbConfirmMessage pbMapInterpreterRunning? pbPrepareBattle pbBattleAnimation pbSceneStandby pbGetTrainerBattleBGM].freeze
+    REQUIRED_GLOBAL_METHODS = %i[getBaseOverworldSpriteFilename generateClothedBitmapStatic generate_front_trainer_sprite_bitmap_from_appearance pbFacingTile pbMessage pbConfirmMessage pbMapInterpreterRunning? pbPrepareBattle pbBattleAnimation pbSceneStandby pbGetTrainerBattleBGM is_fusion_of_any].freeze
 
     def self.violations
       missing = REQUIRED_INSTANCE_METHODS.flat_map do |class_name, methods|

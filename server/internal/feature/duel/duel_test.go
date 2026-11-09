@@ -11,6 +11,7 @@ import (
 
 const (
 	turn         = 60 * time.Second
+	resolving    = turn + 60*time.Second
 	challengeTTL = 30 * time.Second
 	grace        = 15 * time.Second
 )
@@ -22,7 +23,7 @@ func TestChallengeAcceptedStartsDuelWithSharedView(t *testing.T) {
 	alice.send(protocol.TypeDuelChallenge, protocol.DuelChallenge{Target: bob.id, Rules: testRules})
 	var invited protocol.DuelInvited
 	bob.expect(protocol.TypeDuelInvited, &invited)
-	if invited != (protocol.DuelInvited{From: alice.id, Name: "Alice", Rules: testRules}) {
+	if !reflect.DeepEqual(invited, protocol.DuelInvited{From: alice.id, Name: "Alice", Rules: testRules}) {
 		t.Fatalf("invited = %+v", invited)
 	}
 	bob.send(protocol.TypeDuelResponse, protocol.DuelResponse{From: alice.id, Accept: true})
@@ -33,7 +34,10 @@ func TestChallengeAcceptedStartsDuelWithSharedView(t *testing.T) {
 		t.Fatalf("accepted = %+v %+v", acceptedA, acceptedB)
 	}
 
-	alice.send(protocol.TypeDuelParty, testParty())
+	aliceParty := testParty()
+	clothes := "basic"
+	aliceParty.Appearance = protocol.Appearance{Skin: 3, Clothes: &clothes, ClothesColor: 120}
+	alice.send(protocol.TypeDuelParty, aliceParty)
 	alice.sync()
 	bob.send(protocol.TypeDuelParty, testParty())
 
@@ -50,6 +54,9 @@ func TestChallengeAcceptedStartsDuelWithSharedView(t *testing.T) {
 	if startA.Players[0].ID != alice.id || startA.Players[1].Name != "Bob" || startA.Parties[1][0].Species != "PIKACHU" {
 		t.Fatalf("start = %+v", startA)
 	}
+	if !reflect.DeepEqual(startA.Players[0].Appearance, aliceParty.Appearance) {
+		t.Fatalf("appearance = %+v", startA.Players[0].Appearance)
+	}
 }
 
 func TestPartiesOmitUnknownFields(t *testing.T) {
@@ -61,7 +68,7 @@ func TestPartiesOmitUnknownFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withExtra := string(frame[:len(frame)-4]) + `,"evil":"x"}]}}`
+	withExtra := strings.Replace(string(frame), `"species":`, `"evil":"x","species":`, 1)
 	alice.raw(withExtra)
 	bob.send(protocol.TypeDuelParty, testParty())
 
@@ -199,7 +206,7 @@ func TestNewRoundRestartsTimer(t *testing.T) {
 	server.clock.advance(turn - time.Second)
 	playRound(alice, bob, 1)
 
-	server.clock.advance(turn - time.Second)
+	server.clock.advance(resolving - time.Second)
 	alice.sync()
 	bob.sync()
 
@@ -223,7 +230,7 @@ func TestReplacementIsForwardedAndRestartsTimer(t *testing.T) {
 	if gotA != want || gotB != want {
 		t.Fatalf("replaced = %+v / %+v", gotA, gotB)
 	}
-	server.clock.advance(turn - time.Second)
+	server.clock.advance(resolving - time.Second)
 	alice.sync()
 	bob.sync()
 	server.clock.advance(time.Second)
@@ -264,7 +271,7 @@ func TestStalledReplacementLosesOnlyAfterAdmission(t *testing.T) {
 				client.sync()
 			}
 
-			server.clock.advance(turn)
+			server.clock.advance(resolving)
 
 			for _, client := range clients {
 				client.expectEnded(protocol.EndTimeout, tc.winner)
@@ -282,7 +289,7 @@ func TestAdmissionIsClearedByANewRound(t *testing.T) {
 	alice.sync()
 	playRound(alice, bob, 2)
 
-	server.clock.advance(turn)
+	server.clock.advance(resolving)
 
 	alice.expectEnded(protocol.EndTimeout, nil)
 	bob.expectEnded(protocol.EndTimeout, nil)
@@ -496,6 +503,12 @@ func TestInvalidPartyDisconnectsSenderOnly(t *testing.T) {
 			party.Party[0].PifSprite = &sprite
 			return party
 		}},
+		{"traversal appearance", func() protocol.DuelParty {
+			party := testParty()
+			clothes := "a..b"
+			party.Appearance.Clothes = &clothes
+			return party
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -536,4 +549,70 @@ func TestTimeoutInOneDuelDoesNotAffectAnother(t *testing.T) {
 	alice.expectEnded(protocol.EndTimeout, nil)
 	bob.expectEnded(protocol.EndTimeout, nil)
 	playRound(carol, dave, 1)
+}
+
+func TestTimerStartsOnceBothFinishedTheRound(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	begin(alice, bob)
+	playRound(alice, bob, 1)
+	server.clock.advance(resolving - time.Second)
+	alice.sync()
+
+	for _, client := range []*testClient{alice, bob} {
+		client.send(protocol.TypeDuelHash, protocol.DuelHash{Round: 1, Hash: "same"})
+		client.sync()
+	}
+	server.clock.advance(turn - time.Second)
+	alice.sync()
+	bob.sync()
+
+	server.clock.advance(time.Second)
+	alice.expectEnded(protocol.EndTimeout, nil)
+	bob.expectEnded(protocol.EndTimeout, nil)
+}
+
+func TestSlowAnimationDoesNotTimeOut(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	begin(alice, bob)
+	playRound(alice, bob, 1)
+
+	server.clock.advance(turn)
+
+	alice.sync()
+	bob.sync()
+}
+
+func TestRejectEndsDuelWithoutWinner(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	begin(alice, bob)
+
+	bob.send(protocol.TypeDuelReject, nil)
+
+	alice.expectEnded(protocol.EndIllegal, nil)
+	bob.expectEnded(protocol.EndIllegal, nil)
+}
+
+func TestRejectWhileSendingParties(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	accept(alice, bob)
+
+	alice.send(protocol.TypeDuelReject, nil)
+
+	alice.expectEnded(protocol.EndIllegal, nil)
+	bob.expectEnded(protocol.EndIllegal, nil)
+}
+
+func TestRejectAfterFirstRoundDisconnects(t *testing.T) {
+	server := startServer(t)
+	alice, bob := join(t, server, "Alice"), join(t, server, "Bob")
+	begin(alice, bob)
+	playRound(alice, bob, 1)
+
+	alice.send(protocol.TypeDuelReject, nil)
+
+	alice.expectKicked()
 }

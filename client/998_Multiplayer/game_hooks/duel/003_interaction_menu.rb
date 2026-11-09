@@ -21,7 +21,7 @@ module Multiplayer
     def self.show(player)
       entries = options
       labels = entries.map(&:label) + [_INTL("Cancel")]
-      choice = pbMessage(_INTL("What do you want to do with {1}?", player.name), labels, labels.size - 1)
+      choice = pbMessage(_INTL("What do you want to do with {1}?", player.name), labels, labels.size)
       entries[choice]&.action&.call(player)
     end
 
@@ -32,6 +32,7 @@ module Multiplayer
       return pbMessage(_INTL("You already have a duel in progress.")) unless duel&.idle?
       rules = RulesMenu.choose([available, MAX_PARTY_SIZE].min)
       return unless rules
+      return if DuelPrompts.warn_if_illegal(rules)
       duel.challenge(player.id, rules)
       pbMessage(_INTL("Challenge sent to {1}.", player.name))
     end

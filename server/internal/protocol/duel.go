@@ -20,6 +20,7 @@ const (
 	TypeDuelResult      = "duel_result"
 	TypeDuelForfeit     = "duel_forfeit"
 	TypeDuelReplacing   = "duel_replacing"
+	TypeDuelReject      = "duel_reject"
 
 	TypeDuelInvited  = "duel_invited"
 	TypeDuelDeclined = "duel_declined"
@@ -45,6 +46,7 @@ const (
 	EndTimeout    = "timeout"
 	EndDesync     = "desync"
 	EndFinished   = "finished"
+	EndIllegal    = "illegal_party"
 )
 
 // Actions a player can choose for a round.
@@ -56,7 +58,7 @@ const (
 const (
 	maxPartySize       = 6
 	maxLevel           = 100
-	minTurnSeconds     = 10
+	minTurnSeconds     = 30
 	maxTurnSeconds     = 300
 	maxForm            = 99
 	maxGender          = 2
@@ -97,6 +99,8 @@ type DuelRules struct {
 	Level       int  `json:"level"`
 	HeldItems   bool `json:"held_items"`
 	TurnSeconds int  `json:"turn_seconds"`
+	// Clauses are the optional rules in force, by id: see duelClauses.
+	Clauses []string `json:"clauses"`
 }
 
 // Validate checks that the rules are within the protocol's bounds.
@@ -110,7 +114,7 @@ func (r DuelRules) Validate() error {
 	if r.TurnSeconds < minTurnSeconds || r.TurnSeconds > maxTurnSeconds {
 		return invalid("turn seconds")
 	}
-	return nil
+	return r.validateClauses()
 }
 
 // DuelChallenge asks another player for a duel.
@@ -261,7 +265,8 @@ func (p Pokemon) Validate(rules DuelRules) error {
 
 // DuelParty is the team a player brings to a duel.
 type DuelParty struct {
-	Party []Pokemon `json:"party"`
+	Party      []Pokemon  `json:"party"`
+	Appearance Appearance `json:"appearance"`
 }
 
 // Validate checks the party's size and every member against the rules.
@@ -274,7 +279,10 @@ func (p DuelParty) Validate(rules DuelRules) error {
 			return err
 		}
 	}
-	return nil
+	if err := rules.checkClauses(p.Party); err != nil {
+		return err
+	}
+	return p.Appearance.Validate()
 }
 
 // DuelAction is what a player does in a round.
@@ -368,8 +376,9 @@ type DuelAccepted struct {
 
 // DuelPlayer identifies one side of a duel.
 type DuelPlayer struct {
-	ID   uint32 `json:"id"`
-	Name string `json:"name"`
+	ID         uint32     `json:"id"`
+	Name       string     `json:"name"`
+	Appearance Appearance `json:"appearance"`
 }
 
 // DuelStart begins a duel. Players and Parties are in side order.

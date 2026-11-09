@@ -23,7 +23,8 @@ type match struct {
 	phase    phase
 	deadline time.Time
 
-	parties [2][]protocol.Pokemon
+	parties     [2][]protocol.Pokemon
+	appearances [2]protocol.Appearance
 
 	round        int
 	choices      [2]*protocol.DuelAction
@@ -57,6 +58,17 @@ func (m *match) sideOf(id session.ID) int {
 
 func (m *match) turnDuration() time.Duration {
 	return time.Duration(m.rules.TurnSeconds) * time.Second
+}
+
+// resolvingDuration bounds a round still being animated: the turn timer only
+// starts once both clients report that the round is over.
+func (m *match) resolvingDuration() time.Duration {
+	return m.turnDuration() + animationAllowance
+}
+
+// bothHashedRound reports whether both sides finished the last resolved round.
+func (m *match) bothHashedRound() bool {
+	return m.hashed[0] == m.round-1 && m.hashed[1] == m.round-1
 }
 
 func (m *match) hasBothParties() bool {

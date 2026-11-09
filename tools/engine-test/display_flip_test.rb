@@ -11,6 +11,13 @@ module DisplayFlipTest
   FIRST_MESSAGE_PRESS_FRAME = 60
   MESSAGE_PRESS_INTERVAL = 25
   COMMAND_SNAPSHOT_DELAY = 15
+  INTRO_SNAPSHOT_DELAY = 6
+  LOCAL_OUTFIT = { :@skin_tone => 5, :@clothes => "red", :@hair => "2_bob", :@hat => "ash" }.freeze
+  PIXEL_STEP = 3
+  HOSTILE_APPEARANCE = {
+    "skin" => 99, "clothes" => "../../nope", "hair" => "no_such_hair", "hat" => "a..b", "hat2" => "a/b",
+    "clothes_color" => "red", "hair_color" => 1e12, "hat_color" => nil, "hat2_color" => -1e12
+  }.freeze
   ATTACK_SNAPSHOT_DELAYS = [8, 20].freeze
   PARTY_SNAPSHOT_FRAME = 38
   PARTY_CURSOR_FRAME = 44
@@ -36,6 +43,10 @@ module DisplayFlipTest
   module BotParty
     def self.for_rules(rules)
       Array.new(rules.party_size) { BOT_POKEMON }
+    end
+
+    def self.appearance
+      BOT_APPEARANCE
     end
   end
 
@@ -92,6 +103,7 @@ module DisplayFlipTest
 
   def self.record_text(text)
     @texts[@side] << text if @side
+    schedule("intro", INTRO_SNAPSHOT_DELAY) if text =~ /challenged by/
   end
 
   def self.snapshot(moment)
@@ -131,6 +143,39 @@ module DisplayFlipTest
     fail_check("foe sprite is a back sprite") if foe.instance_variable_get(:@back)
     fail_check("own box shows #{own_box.battler.name}") unless LOCAL_SPECIES.include?(own_box.battler.name)
     fail_check("foe box shows #{foe_box.battler.name}") unless foe_box.battler.name == FOE_NAME
+    check_trainer("player_1", Multiplayer::LocalPlayer.appearance)
+    check_trainer("trainer_1", BOT_APPEARANCE)
+    check_fallbacks
+  end
+
+  # The sprite must show exactly what the duelist's own appearance generates.
+  def self.check_trainer(name, wire)
+    expected = generate_front_trainer_sprite_bitmap_from_appearance(Multiplayer::DuelLook.from_wire(wire), false).bitmap
+    actual = @scene.sprites[name].bitmap
+    fail_check("#{name} does not show its duelist") unless same_pixels?(actual, expected)
+    foe = @scene.sprites["trainer_1"]
+    fail_check("trainer_1 origin #{foe.ox},#{foe.oy}") unless foe.ox == foe.bitmap.width / 2 && foe.oy == foe.bitmap.height
+  end
+
+  def self.same_pixels?(first, second)
+    return false unless first.width == second.width && first.height == second.height
+    (0...first.width).step(PIXEL_STEP).to_a.product((0...first.height).step(PIXEL_STEP).to_a).all? do |x, y|
+      first.get_pixel(x, y).to_s == second.get_pixel(x, y).to_s
+    end
+  end
+
+  # Hostile values are drawn with the game's fallbacks, and a duelist that
+  # cannot be drawn at all keeps the sprite the engine made.
+  def self.check_fallbacks
+    look = Multiplayer::DuelLook.from_wire(HOSTILE_APPEARANCE)
+    fail_check("traversal accepted") unless look.clothes.nil? && look.hat.nil? && look.hat2.nil?
+    fail_check("colors not clamped") unless look.hair_color == 1_000_000 && look.hat2_color == -1_000_000 && look.clothes_color.zero?
+    fail_check("non-hash appearance accepted") if Multiplayer::DuelLook.from_wire("nope")
+    generate_front_trainer_sprite_bitmap_from_appearance(look, false)
+    sprite = @scene.sprites["trainer_1"]
+    before = sprite.bitmap
+    @scene.send(:dress, sprite, 9)
+    fail_check("unknown side replaced the sprite") unless sprite.bitmap.equal?(before)
   end
 
   def self.on_animation(move_id, user_index)
@@ -230,11 +275,18 @@ module DisplayFlipTest
   def self.start_bot
     return if @bot || !Multiplayer::Runtime.feature(Multiplayer::Presence::FEATURE_NAME)
     check_flag_cleared_on_error
+    dress_local_player
     @client = Multiplayer::Client.new(ADDRESS, "Bot")
     @presence = Multiplayer::Presence.new(@client)
     @duel = Multiplayer::Duel.new(@client, BotParty)
     @client.start
     @bot = true
+  end
+
+  # A new game has no outfit, which would hide what the near sprite shows. The
+  # game's setters redraw the player, re-entering this test from Graphics.update.
+  def self.dress_local_player
+    LOCAL_OUTFIT.each { |name, value| $Trainer.instance_variable_set(name, value) }
   end
 
   def self.check_flag_cleared_on_error
@@ -279,6 +331,7 @@ module DisplayFlipTest
       @failures << "side #{side}: own called opposing" if texts.any? { |text| text =~ /opposing (Pikachu|Squirtle)/ }
       @failures << "side #{side}: foe's Pokemon told Go!" if texts.any? { |text| text =~ /Go! #{FOE_NAME}/ }
       @failures << "side #{side}: no victory over the bot" unless texts.any? { |text| text =~ /You defeated .*Bot/ }
+      @failures << "side #{side}: not challenged by the bot" unless texts.any? { |text| text =~ /challenged by .*Bot/ }
     end
   end
 

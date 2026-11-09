@@ -7,7 +7,8 @@ module NetworkDuelTest
   TIME_BUDGET = 110
   FRAMES_PER_STEP = 3
   ADDRESS = Multiplayer::Config.new("127.0.0.1", 7777)
-  RULES = Multiplayer::Duel::Rules.new(6, 0, true, 60)
+  # Every clause that only changes the simulation: the random parties must stay legal.
+  RULES = Multiplayer::Duel::Rules.new(6, 0, true, 60, %w[sleep freeze ohko evasion perish skill_swap sonic_boom])
   INTERRUPT_ROUND = 3
   SWITCH_CHANCE = 15
 
@@ -16,6 +17,10 @@ module NetworkDuelTest
 
     def for_rules(_rules)
       @party
+    end
+
+    def appearance
+      {}
     end
   end
 
