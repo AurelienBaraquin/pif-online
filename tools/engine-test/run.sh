@@ -12,6 +12,14 @@ game=$2
 stage=$3
 root=$(cd "$(dirname "$0")/../.." && pwd)
 overlay="$root/client/998_Multiplayer"
+
+# Tests only mean something on the game version the release supports.
+supported=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/client/supported-game.json")
+installed=$(sed -n 's/.*HOENN_VERSION_NUMBER *= *"\([^"]*\)".*/\1/p' "$game/Data/Scripts/001_Settings.rb")
+if [ "$installed" != "$supported" ]; then
+  echo "game version $installed, but the supported version is $supported (client/supported-game.json)" >&2
+  exit 1
+fi
 timeout_ms=280000
 
 mapfile -t overlay_core < <(find "$overlay/core" "$overlay/features" -name '*.rb' | sort)

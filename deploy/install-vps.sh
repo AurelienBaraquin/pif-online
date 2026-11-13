@@ -26,11 +26,17 @@ case $(uname -m) in
     ;;
 esac
 
-download=$(mktemp)
-trap 'rm -f "$download"' EXIT
-curl -fsSL -o "$download" \
-  "https://github.com/$repository/releases/latest/download/pif-server-linux-$architecture"
-install -m 0755 "$download" "$binary"
+release=https://github.com/$repository/releases/latest/download
+name=pif-server-linux-$architecture
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+curl -fsSL -o "$work/$name" "$release/$name"
+curl -fsSL -o "$work/SHA256SUMS" "$release/SHA256SUMS"
+if ! (cd "$work" && grep " $name\$" SHA256SUMS | sha256sum -c --quiet -); then
+  echo "The downloaded server is corrupted (checksum mismatch). Run the script again." >&2
+  exit 1
+fi
+install -m 0755 "$work/$name" "$binary"
 
 cat >"$service" <<UNIT
 [Unit]

@@ -6,11 +6,17 @@ Deux programmes : la surcouche à ajouter au jeu, et un serveur que l'un des jou
 
 ## Jouer
 
-Tous les joueurs doivent avoir **la même version du jeu** et la même version de PIF Online.
+PIF Online est fait pour **Pokémon Infinite Fusion 2 (Hoenn) version 1.3.2**, la version du launcher officiel au 3 novembre 2026. Tous les joueurs doivent avoir cette version.
 
-1. Télécharge `PIF-Online-Client.zip` depuis la [dernière Release](https://github.com/AurelienBaraquin/pif-online/releases/latest).
-2. Extrais-le dans le dossier du jeu (celui qui contient `InfiniteFusion2.exe`). Pour une mise à jour, supprime d'abord `Data/Scripts/998_Multiplayer`.
-3. Charge ta partie, ouvre le menu Pause, puis **Multiplayer > Add a server**, et tape l'adresse donnée par l'hébergeur.
+1. Installe ou mets à jour le jeu avec le launcher officiel, puis ferme le jeu.
+2. Ouvre PowerShell (touche Windows, tape `PowerShell`, Entrée) et colle :
+
+   ```powershell
+   irm https://github.com/AurelienBaraquin/pif-online/releases/latest/download/install.ps1 | iex
+   ```
+
+   L'installeur trouve le jeu, vérifie sa version et que le jeu est fermé, télécharge PIF Online, contrôle son intégrité et l'installe. Relance la même commande pour mettre à jour. Si le jeu n'est pas trouvé, il demande son dossier (celui qui contient `InfiniteFusion2.exe`).
+3. Lance le jeu, charge ta partie, ouvre le menu Pause, puis **Multiplayer > Add a server**, et tape l'adresse donnée par l'hébergeur.
 
 Le jeu mémorise le serveur et s'y reconnecte au prochain chargement. **Disconnect** te ramène en solo.
 
@@ -40,7 +46,7 @@ Le fichier `multiplayer.log`, à côté de l'exécutable du jeu, détaille les e
 
 ## Développement
 
-Le protocole est décrit dans [protocol/PROTOCOL.md](protocol/PROTOCOL.md). Un tag `v*` construit et publie une Release.
+Le protocole est décrit dans [protocol/PROTOCOL.md](protocol/PROTOCOL.md). La version du jeu supportée est fixée dans [client/supported-game.json](client/supported-game.json) : l'installeur et les tests la vérifient. Un tag `v*` construit et publie une Release.
 
 ```bash
 cd server && go test -race ./...

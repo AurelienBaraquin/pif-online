@@ -26,3 +26,5 @@ mv "$stage/client/998_Multiplayer" "$stage/Data/Scripts/"
 rm -r "$stage/client"
 rm -f "$output/PIF-Online-Client.zip"
 (cd "$stage" && zip -qr "$output/PIF-Online-Client.zip" Data)
+cp "$root/client/installer/install.ps1" "$root/client/supported-game.json" "$output/"
+(cd "$output" && rm -f SHA256SUMS && sha256sum -- * >SHA256SUMS)
