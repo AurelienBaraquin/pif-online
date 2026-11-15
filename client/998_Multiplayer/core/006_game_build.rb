@@ -6,6 +6,9 @@ module Multiplayer
   module GameBuild
     DATA_FILES = %w[abilities items moves species types].map { |name| "Data/#{name}.dat" }.freeze
     SCRIPT_FILES = "Data/Scripts/**/*.rb"
+    # The game downloads this one at runtime: two copies of the same release
+    # can hold different versions of it.
+    RUNTIME_FILES = ["Data/Scripts/DownloadedSettings.rb"].freeze
     UNKNOWN = "0"
 
     # An unreadable file (locked by an antivirus, say) only costs duels: the
@@ -20,7 +23,8 @@ module Multiplayer
     # Copies of a game can differ by line endings alone.
     def self.sources
       data = DATA_FILES.select { |path| File.file?(path) }.map { |path| File.binread(path) }
-      data + Dir.glob(SCRIPT_FILES).sort.map { |path| File.binread(path).gsub("\r\n", "\n") }
+      scripts = Dir.glob(SCRIPT_FILES).sort - RUNTIME_FILES
+      data + scripts.map { |path| File.binread(path).gsub("\r\n", "\n") }
     end
     private_class_method :sources
   end

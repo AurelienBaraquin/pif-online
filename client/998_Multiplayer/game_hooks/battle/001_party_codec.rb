@@ -8,7 +8,8 @@ module Multiplayer
 
     PARTY_SIZE = 1..6
     STAT_COUNT = 6..6
-    DEX_NUMBERS = 1..501
+    # Every Pokémon a fusion can be made of: the count grows with game updates.
+    DEX_NUMBERS = (1..::Settings::NB_POKEMON).freeze
     MAX_TOTAL_EV = 510
     MAX_NAME_LENGTH = 24
     FALLBACK_NAME = "Pokemon"
