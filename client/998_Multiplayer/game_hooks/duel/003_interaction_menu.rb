@@ -1,6 +1,6 @@
 module Multiplayer
   # The window opened by interacting with another player. A new interaction is
-  # one more entry in OPTIONS.
+  # one more entry in options.
   module InteractionMenu
     Option = Struct.new(:label, :action)
     MAX_PARTY_SIZE = 6

@@ -1,0 +1,19 @@
+name: docs-check
+
+# Documentation is validated even when code is not touched: broken links, cited paths that no
+# longer exist, malformed or misnumbered ADRs.
+# Runs on every push and pull request: a code-only change can also add an undocumented surface.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check-docs.mjs
