@@ -52,4 +52,13 @@ Le protocole est décrit dans [protocol/PROTOCOL.md](protocol/PROTOCOL.md). La v
 cd server && go test -race ./...
 ```
 
-Les tests du client tournent dans le moteur du jeu : voir `tools/engine-test/run.sh`.
+Les tests du client tournent dans le vrai moteur du jeu, sous Windows depuis WSL, rangés par catégorie :
+
+```bash
+tools/engine-test/suite.sh quick <dossier-du-jeu> <dossier-windows-de-test>   # ~1 min, à chaque modification
+tools/engine-test/suite.sh world ...   # présence : un jeu, puis deux vrais jeux
+tools/engine-test/suite.sh duel ...    # duels et écrans de combat
+tools/engine-test/suite.sh deep ...    # tests longs, avant une Release
+```
+
+Pour essayer à la main sans second PC, `tools/sandbox/two-games.sh` prépare deux copies jouables du jeu reliées à un serveur local, chacune avec ses propres sauvegardes.

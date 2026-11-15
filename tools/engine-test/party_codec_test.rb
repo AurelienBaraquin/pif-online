@@ -8,7 +8,7 @@ module PartyCodecTest
   ROUND_TRIPS = 200
   SIMULATION_BUDGET = 60
   MAX_LINE_BYTES = 16 * 1024
-  ROSTER_DEX = 1..251
+  ROSTER_DEX = 1..::Settings::NB_POKEMON
   FUSION_CHANCE = 50
   SIZES = %i[SMALL AVERAGE LARGE SUPER].freeze
   SPRITES = [nil, [:CUSTOM, 38, 73, "a"], [:AUTOGEN, 38, 73, ""], [:BASE, 25, nil, "b"]].freeze

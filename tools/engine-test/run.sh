@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs an engine test on Windows from WSL against a locally built server.
-# usage: run.sh client|game|battle|codec|interaction|menu|network|rules|robust|two|flip <game-directory> <windows-staging-directory>
+# usage: run.sh client|game|battle|codec|interaction|menu|network|rules|robust|two|flip|presence <game-directory> <windows-staging-directory>
+# presence loads PIF_TEST_SAVES/red.rxdata and blue.rxdata when that directory is set.
 set -euo pipefail
 
 # Engine tests share the server port and the desktop: run one at a time.
@@ -47,10 +48,20 @@ stage_game_with_test() {
   rm -rf "$stage/Data/Scripts/998_Multiplayer" "$stage/Data/Scripts/998_MultiplayerTest"
   cp -r "$overlay" "$stage/Data/Scripts/"
   mkdir -p "$stage/Data/Scripts/998_MultiplayerTest"
-  for test_file in "$@"; do
+  for test_file in 000_test_support.rb "$@"; do
     cp "$root/tools/engine-test/$test_file" "$stage/Data/Scripts/998_MultiplayerTest/"
   done
   printf '{"servers":[{"host":"127.0.0.1","port":7777}],"active":{"host":"127.0.0.1","port":7777}}\n' >"$stage/multiplayer.json"
+  isolate_saves
+}
+
+# The game keeps its saves in %APPDATA%\<dataPathApp>: a test must never reach
+# the player's own saves.
+isolate_saves() {
+  local config="$stage/mkxp.json"
+  grep -q '"dataPathApp": "pif-online-test"' "$config" && return
+  sed -i 's|^\( *\)// "dataPathApp": "mygame",|\1"dataPathApp": "pif-online-test",|' "$config"
+  grep -q '"dataPathApp": "pif-online-test"' "$config" || { echo "cannot isolate saves in $config" >&2; exit 1; }
 }
 
 prepare_game() {
@@ -90,6 +101,15 @@ prepare_robust() {
 
 prepare_flip() {
   stage_game_with_test battle_determinism_test.rb display_flip_test.rb
+}
+
+prepare_presence() {
+  stage_game_with_test presence_test.rb
+  rm -rf "$stage/saves"
+  if [ -n "${PIF_TEST_SAVES:-}" ]; then
+    mkdir -p "$stage/saves"
+    cp "$PIF_TEST_SAVES"/red.rxdata "$PIF_TEST_SAVES"/blue.rxdata "$stage/saves/"
+  fi
 }
 
 prepare_two() {
@@ -143,7 +163,7 @@ show_results() {
   fi
 }
 
-if [ "$mode" = two ]; then
+if [ "$mode" = two ] || [ "$mode" = presence ]; then
   launch red blue
   status=0
   for role in red blue; do

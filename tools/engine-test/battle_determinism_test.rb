@@ -168,7 +168,13 @@ module BattleDeterminism
       base = [b.pokemon.species, b.hp, b.status, b.statusCount, b.item_id, b.ability_id,
               b.stages.dup, b.moves.map(&:pp), b.pokemonIndex,
               pbParty(idx).map { |p| [p.hp, p.status] }]
-      @variant.mirrored ? base : base + [b.effects.dup]
+      @variant.mirrored ? base : base + [b.effects.map { |value| comparable_effect(value) }]
+    end
+
+    # Illusion holds a Pokemon object: compare what it shows, not its identity,
+    # which differs between a party and its copy rebuilt from the network.
+    def comparable_effect(value)
+      value.is_a?(Pokemon) ? [:pokemon, value.species, value.name, value.level] : value
     end
   end
 
